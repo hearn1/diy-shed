@@ -1,6 +1,17 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { getHealth } from '../api/client.js';
 
 export default function Layout() {
+  const [cliMissing, setCliMissing] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    getHealth()
+      .then((health) => setCliMissing(health?.claude?.available === false))
+      .catch(() => setCliMissing(false));
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -12,6 +23,14 @@ export default function Layout() {
           <NavLink to="/inventory">Inventory</NavLink>
         </nav>
       </header>
+      {cliMissing && !dismissed && (
+        <div className="banner" role="alert">
+          <span>Claude Code CLI not found — projects will need manual entry.</span>
+          <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss">
+            Dismiss
+          </button>
+        </div>
+      )}
       <main className="app-main">
         <Outlet />
       </main>
