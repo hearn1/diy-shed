@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
+
+const enqueue = vi.fn(() => Promise.resolve());
+const researchProject = vi.fn(() => Promise.resolve('ready'));
+const isClaudeAvailable = vi.fn(() => Promise.resolve(false));
+
+vi.mock('../src/research/queue.js', () => ({ enqueue: (fn) => enqueue(fn) }));
+vi.mock('../src/research/runner.js', () => ({ researchProject: (id) => researchProject(id) }));
+vi.mock('../src/research/claudeCli.js', () => ({ isClaudeAvailable: () => isClaudeAvailable() }));
 
 const dbPath = path.join(os.tmpdir(), `diy-shed-projects-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
 process.env.DIYSHED_DB = dbPath;
@@ -11,6 +19,13 @@ let app;
 
 beforeAll(async () => {
   app = (await import('../src/app.js')).default;
+});
+
+beforeEach(() => {
+  enqueue.mockClear();
+  researchProject.mockClear();
+  isClaudeAvailable.mockReset();
+  isClaudeAvailable.mockResolvedValue(false);
 });
 
 afterAll(() => {
@@ -83,5 +98,52 @@ describe('projects API', () => {
     expect((await request(app).get('/api/projects/999999')).status).toBe(404);
     expect((await request(app).put('/api/projects/999999').send({ name: 'x' })).status).toBe(404);
     expect((await request(app).delete('/api/projects/999999')).status).toBe(404);
+  });
+
+  it('GET includes an embedded guides array', async () => {
+    const created = await request(app).post('/api/projects').send({ name: 'With guides' });
+    const got = await request(app).get(`/api/projects/${created.body.id}`);
+    expect(Array.isArray(got.body.guides)).toBe(true);
+  });
+});
+
+describe('projects research triggering', () => {
+  it('returns 201 immediately and enqueues research when the CLI is available', async () => {
+    isClaudeAvailable.mockResolvedValue(true);
+    const res = await request(app).post('/api/projects').send({ name: 'Auto research' });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('researching');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates as ready and does not enqueue when the CLI is unavailable', async () => {
+    isClaudeAvailable.mockResolvedValue(false);
+    const res = await request(app).post('/api/projects').send({ name: 'No CLI' });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('ready');
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('skips research on ?research=false even when the CLI is available', async () => {
+    isClaudeAvailable.mockResolvedValue(true);
+    const res = await request(app).post('/api/projects?research=false').send({ name: 'Manual only' });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('ready');
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('re-run endpoint returns 202, sets researching and enqueues', async () => {
+    const created = await request(app).post('/api/projects').send({ name: 'Rerun me' });
+    enqueue.mockClear();
+    const res = await request(app).post(`/api/projects/${created.body.id}/research`);
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('researching');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-run endpoint 404s on an unknown id', async () => {
+    const res = await request(app).post('/api/projects/999999/research');
+    expect(res.status).toBe(404);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
