@@ -106,6 +106,31 @@ A locally-hosted web app that helps homeowners decide **what DIY project to tack
 
 ---
 
+## Design & UI
+
+The visual design and the home-screen layout are specified by the interactive mockup in
+[`design/home-concepts.html`](design/home-concepts.html) (see [`design/README.md`](design/README.md)).
+The mockup contains two concepts; the **chosen direction is 1a "Workshop Ledger."**
+
+### DR1 — Design language
+- **Type**: **Bitter** (serif) for headings and project names; **Karla** (sans-serif) for UI and body text.
+- **Palette** (OKLCH): warm cream background `oklch(94% 0.015 75)`, dark-brown surfaces (`oklch(28% 0.045 50)` / `oklch(21% 0.035 45)`), amber/gold accent `oklch(64% 0.13 75)`, rust primary/links/cost `oklch(48% 0.09 55)`.
+- **Brand**: `diy·shed` wordmark with a rotated amber diamond glyph.
+- **Surfaces**: rounded cards (10–12px), pill-shaped priority badges, soft shadows.
+- **Priority colours**: Urgent Fix red `oklch(52% 0.16 30)`, Highly Desired gold `oklch(60% 0.13 65)`, Slightly Desired green `oklch(55% 0.09 145)`, Dreams muted `oklch(58% 0.025 90)`.
+
+### DR2 — Home screen (concept 1a "Workshop Ledger")
+- **Top bar**: wordmark left, `+ Add Project` button right.
+- **Weight slider** directly under the bar, full width, labelled *"More time than money ↔ More money than time"* with a live `N% effort · M% cost` readout; adjusting it re-ranks the list immediately (FR5.3).
+- **Ranked list** of spacious cards, one per project, each showing rank, name, priority pill, description, an effort bar, `N missing item(s)`, and estimated cost `$X` (FR5.5).
+- **Researching state**: in-progress projects render as a dashed card with pulsing dots and *"Researching guides, tools & cost…"* until they become `ready` (FR2.3).
+- **Add Project**: right-hand slide-over panel with Name, Description, and a 4-level Priority picker; primary action *"Add & Start Research."*
+
+### DR3 — Effort-vs-cost weighting is a single slider
+- The FR5.2 weights `w_effort` and `w_cost` are **complementary** — `w_cost = 1 − w_effort` — surfaced as one slider (0–100% effort). Only `w_effort` needs to be persisted (the `settings` table stores the single value; `w_cost` is derived). This refines the TR4 note that listed both weights.
+
+---
+
 ## Milestones
 
 1. **M1 — Skeleton**: Express + React + SQLite scaffolding, project & inventory CRUD, manual entry of tools/materials/effort/priority. (App is useful with zero Claude integration.)
