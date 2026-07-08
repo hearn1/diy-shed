@@ -1,5 +1,6 @@
 import express from 'express';
 import projectsRouter from './routes/projects.js';
+import inventoryRouter from './routes/inventory.js';
 
 const app = express();
 
@@ -10,5 +11,6 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/projects', projectsRouter);
+app.use('/api/inventory', inventoryRouter);
 
 export default app;
