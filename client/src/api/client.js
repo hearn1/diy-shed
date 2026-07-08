@@ -1,0 +1,33 @@
+async function request(method, path, body) {
+  const options = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) options.body = JSON.stringify(body);
+  const res = await fetch(path, options);
+  if (!res.ok) {
+    let message = `Request failed with status ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && data.error) message = data.error;
+    } catch {
+      // response had no JSON body
+    }
+    throw new Error(message);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+export function get(path) {
+  return request('GET', path);
+}
+
+export function post(path, body) {
+  return request('POST', path, body);
+}
+
+export function put(path, body) {
+  return request('PUT', path, body);
+}
+
+export function del(path) {
+  return request('DELETE', path);
+}
