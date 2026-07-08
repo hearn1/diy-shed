@@ -1,9 +1,14 @@
 import { spawn } from 'node:child_process';
 import { RESEARCH_TIMEOUT_MS } from '../env.js';
 
-const CLAUDE_BIN = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+// On Windows `claude` is a `.cmd` shim, which Node refuses to spawn with
+// shell:false (EINVAL, CVE-2024-27980). We therefore spawn through the shell on
+// win32 so PATHEXT resolves it, and keep the (untrusted) prompt off the command
+// line entirely — it is written to stdin — so nothing is interpolated into a
+// shell string on any platform.
+const USE_SHELL = process.platform === 'win32';
 
-const RESEARCH_ARGS = ['--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json'];
+const RESEARCH_ARGS = ['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json'];
 
 function stripFences(text) {
   const trimmed = text.trim();
@@ -38,10 +43,16 @@ export function runClaude(prompt, { timeoutMs = RESEARCH_TIMEOUT_MS, spawnImpl =
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl(CLAUDE_BIN, ['-p', prompt, ...RESEARCH_ARGS], { shell: false });
+      child = spawnImpl('claude', RESEARCH_ARGS, { shell: USE_SHELL });
     } catch (err) {
       resolve({ ok: false, error: err.message });
       return;
+    }
+
+    try {
+      child.stdin?.end(prompt);
+    } catch {
+      // stdin already closed; the child will report via close/error
     }
 
     let stdout = '';
@@ -92,7 +103,7 @@ export function isClaudeAvailable({ spawnImpl = spawn } = {}) {
   availabilityCache = new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl(CLAUDE_BIN, ['--version'], { shell: false });
+      child = spawnImpl('claude', ['--version'], { shell: USE_SHELL });
     } catch {
       resolve(false);
       return;

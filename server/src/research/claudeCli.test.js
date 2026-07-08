@@ -6,6 +6,16 @@ function fakeChild() {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
+  child.stdinData = '';
+  child.stdin = {
+    end: (data) => {
+      if (data !== undefined) child.stdinData += data;
+      child.stdinEnded = true;
+    },
+    write: (data) => {
+      child.stdinData += data;
+    }
+  };
   child.kill = () => {
     child.killed = true;
   };
@@ -13,11 +23,12 @@ function fakeChild() {
 }
 
 describe('runClaude', () => {
-  it('spawns claude with the exact headless arg array and shell:false', async () => {
+  it('spawns claude headless with fixed flags and sends the prompt via stdin', async () => {
     let captured;
+    let child;
     const spawnImpl = (bin, args, opts) => {
+      child = fakeChild();
       captured = { bin, args, opts };
-      const child = fakeChild();
       queueMicrotask(() => {
         child.stdout.emit('data', JSON.stringify({ result: '{"summary":"ok"}' }));
         child.emit('close', 0);
@@ -25,15 +36,11 @@ describe('runClaude', () => {
       return child;
     };
     const res = await runClaude('build a shed', { spawnImpl });
-    expect(captured.args).toEqual([
-      '-p',
-      'build a shed',
-      '--allowedTools',
-      'WebSearch,WebFetch',
-      '--output-format',
-      'json'
-    ]);
-    expect(captured.opts.shell).toBe(false);
+    expect(captured.bin).toBe('claude');
+    expect(captured.args).toEqual(['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json']);
+    expect(captured.args).not.toContain('build a shed');
+    expect(child.stdinData).toBe('build a shed');
+    expect(child.stdinEnded).toBe(true);
     expect(res).toEqual(expect.objectContaining({ ok: true, json: { summary: 'ok' } }));
   });
 
