@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { get, post, put, del } from '../api/client.js';
+import { get, post, put, del, rerunResearch } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 
 const EMPTY_ITEM = { name: '', type: 'tool', est_cost: '' };
+const POLL_MS = 4000;
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -11,6 +12,7 @@ export default function ProjectDetailPage() {
   const [items, setItems] = useState([]);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
+  const pollRef = useRef(null);
 
   const [itemForm, setItemForm] = useState(EMPTY_ITEM);
   const [editingItemId, setEditingItemId] = useState(null);
@@ -22,8 +24,8 @@ export default function ProjectDetailPage() {
       .catch((err) => setError(err.message));
   }
 
-  useEffect(() => {
-    get(`/api/projects/${id}`)
+  function loadProject() {
+    return get(`/api/projects/${id}`)
       .then((p) => {
         setProject(p);
         setEffort({
@@ -37,7 +39,20 @@ export default function ProjectDetailPage() {
         if (err.message.toLowerCase().includes('not found')) setNotFound(true);
         else setError(err.message);
       });
+  }
+
+  useEffect(() => {
+    loadProject();
+    return () => clearInterval(pollRef.current);
   }, [id]);
+
+  useEffect(() => {
+    clearInterval(pollRef.current);
+    if (project?.status === 'researching') {
+      pollRef.current = setInterval(loadProject, POLL_MS);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [project?.status]);
 
   function updateItemForm(field, value) {
     setItemForm((prev) => ({ ...prev, [field]: value }));
@@ -95,7 +110,18 @@ export default function ProjectDetailPage() {
     };
     try {
       const updated = await put(`/api/projects/${id}`, payload);
-      setProject(updated);
+      setProject((prev) => ({ ...updated, guides: prev?.guides ?? [] }));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleRerun() {
+    if (!window.confirm('Re-run research? This replaces the current research results.')) return;
+    setError('');
+    try {
+      await rerunResearch(id);
+      loadProject();
     } catch (err) {
       setError(err.message);
     }
@@ -130,6 +156,51 @@ export default function ProjectDetailPage() {
         Priority: {labelFor(PRIORITIES, project.priority)} · Status: {labelFor(STATUSES, project.status)}
       </p>
       {error && <p className="error">{error}</p>}
+
+      <div className="actions">
+        <h3>Research</h3>
+        {project.status !== 'researching' && (
+          <button onClick={handleRerun}>Re-run research</button>
+        )}
+      </div>
+      {project.status === 'researching' ? (
+        <p className="research-status">
+          <span className="pulse-dots" aria-hidden="true">
+            <i></i>
+            <i></i>
+            <i></i>
+          </span>
+          Researching guides, tools &amp; cost…
+        </p>
+      ) : project.status === 'research_failed' ? (
+        <p className="error">
+          Research failed{project.research_error ? `: ${project.research_error}` : ''}. Use Re-run research to try
+          again, or enter tools, materials and effort manually below.
+        </p>
+      ) : (
+        <>
+          {project.research_summary && <p>{project.research_summary}</p>}
+          {project.effort_level && (
+            <p>
+              Estimated effort: {project.effort_level}
+              {project.effort_hours != null ? ` · ~${project.effort_hours}h` : ''}
+              {project.skill_level ? ` · ${project.skill_level}` : ''}
+            </p>
+          )}
+          {project.guides && project.guides.length > 0 && (
+            <ul>
+              {project.guides.map((g) => (
+                <li key={g.id}>
+                  <a href={g.url} target="_blank" rel="noopener noreferrer">
+                    {g.title}
+                  </a>
+                  {g.summary ? ` — ${g.summary}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
 
       <h3>Tools &amp; Materials</h3>
       <ItemGroup title="Tools" items={tools} onEdit={startEditItem} onDelete={deleteItem} />
