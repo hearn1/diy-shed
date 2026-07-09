@@ -39,3 +39,16 @@ export function rerunResearch(projectId) {
 export function getHealth() {
   return get('/api/health');
 }
+
+export function getSettings() {
+  return get('/api/settings');
+}
+
+export function updateSettings({ w_effort }) {
+  return put('/api/settings', { w_effort });
+}
+
+export function getRankedProjects(wEffort) {
+  const query = wEffort === undefined ? '' : `?w_effort=${wEffort}`;
+  return get(`/api/projects/ranked${query}`);
+}

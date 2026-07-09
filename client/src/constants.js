@@ -30,6 +30,13 @@ export const ITEM_TYPES = [
   { value: 'material', label: 'Material' }
 ];
 
+export const PRIORITY_CLASS = {
+  urgent_fix: 'pill-urgent',
+  highly_desired: 'pill-highly',
+  slightly_desired: 'pill-slightly',
+  dreams: 'pill-dreams'
+};
+
 export function labelFor(list, value) {
   const match = list.find((entry) => entry.value === value);
   return match ? match.label : value;

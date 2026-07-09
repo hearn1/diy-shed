@@ -197,3 +197,211 @@ tr.researching {
   align-items: center;
   gap: 0.5rem;
 }
+
+/* --- M3 ranked home ("Workshop Ledger") --- */
+.weight-slider {
+  margin: 1rem 0 1.5rem;
+  padding: 0.9rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.weight-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.weight-slider input[type='range'] {
+  width: 100%;
+  margin: 0.5rem 0 0.35rem;
+  padding: 0;
+  accent-color: oklch(64% 0.13 75);
+}
+
+.weight-readout {
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: oklch(48% 0.09 55);
+}
+
+.project-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.project-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 1.2rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.05);
+}
+
+.project-card.researching {
+  border-style: dashed;
+}
+
+.card-rank {
+  font-family: Bitter, Georgia, serif;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: oklch(64% 0.13 75);
+  min-width: 1.8rem;
+  text-align: center;
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.card-body h3 {
+  margin: 0;
+  font-family: Bitter, Georgia, serif;
+  font-size: 1.15rem;
+}
+
+.card-body h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-desc {
+  margin: 0.35rem 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.card-cost {
+  font-weight: 700;
+  color: oklch(48% 0.09 55);
+}
+
+.missing-count {
+  color: var(--muted);
+}
+
+.card-actions {
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.15rem 0.7rem;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.pill-urgent {
+  background: oklch(52% 0.16 30);
+}
+
+.pill-highly {
+  background: oklch(60% 0.13 65);
+}
+
+.pill-slightly {
+  background: oklch(55% 0.09 145);
+}
+
+.pill-dreams {
+  background: oklch(58% 0.025 90);
+}
+
+.effort-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.effort-bar i {
+  width: 16px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.effort-bar i.on {
+  background: oklch(64% 0.13 75);
+}
+
+.effort-label {
+  margin-left: 0.35rem;
+  color: var(--muted);
+}
+
+/* --- M3 project-detail gap analysis --- */
+.cost-summary {
+  font-weight: 600;
+}
+
+.cost-summary strong {
+  color: oklch(48% 0.09 55);
+}
+
+.item-list {
+  list-style: none;
+  padding: 0;
+}
+
+.item-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.item-list li.item-owned {
+  color: var(--muted);
+}
+
+.item-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 100px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.item-badge.owned {
+  background: oklch(90% 0.05 145);
+  color: oklch(40% 0.09 145);
+}
+
+.item-badge.missing {
+  background: oklch(90% 0.05 40);
+  color: oklch(48% 0.12 40);
+}

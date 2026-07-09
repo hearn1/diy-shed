@@ -5,7 +5,9 @@ import App from './App.jsx';
 
 vi.mock('./api/client.js', () => ({
   get: vi.fn(() => Promise.resolve([])),
-  getHealth: vi.fn(() => Promise.resolve({ status: 'ok', claude: { available: true } }))
+  getHealth: vi.fn(() => Promise.resolve({ status: 'ok', claude: { available: true } })),
+  getRankedProjects: vi.fn(() => Promise.resolve([])),
+  getSettings: vi.fn(() => Promise.resolve({ w_effort: 0.5, w_cost: 0.5 }))
 }));
 
 describe('App', () => {

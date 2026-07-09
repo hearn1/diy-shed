@@ -147,3 +147,82 @@ describe('projects research triggering', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 });
+
+describe('projects ranking & gap', () => {
+  async function makeProject(fields) {
+    const created = await request(app).post('/api/projects?research=false').send({ name: fields.name });
+    const id = created.body.id;
+    const { name, ...rest } = fields;
+    if (Object.keys(rest).length > 0) {
+      await request(app).put(`/api/projects/${id}`).send(rest);
+    }
+    return id;
+  }
+
+  async function addItem(projectId, item) {
+    return request(app).post(`/api/projects/${projectId}/items`).send(item);
+  }
+
+  it('GET /ranked excludes done projects and orders by score with the extra fields', async () => {
+    const urgent = await makeProject({ name: 'Fix roof', priority: 'urgent_fix', effort_level: 'Low' });
+    const dream = await makeProject({ name: 'Dream deck', priority: 'dreams', effort_level: 'Low' });
+    const done = await makeProject({ name: 'Old task', priority: 'urgent_fix', status: 'done' });
+
+    const res = await request(app).get('/api/projects/ranked');
+    expect(res.status).toBe(200);
+    const ids = res.body.map((p) => p.id);
+    expect(ids).not.toContain(done);
+    expect(ids.indexOf(urgent)).toBeLessThan(ids.indexOf(dream));
+    const first = res.body[0];
+    expect(first).toHaveProperty('rank');
+    expect(first).toHaveProperty('missing_count');
+    expect(first).toHaveProperty('est_cost');
+    expect(first).toHaveProperty('base_score');
+    expect(first).toHaveProperty('final_score');
+  });
+
+  it('honors a ?w_effort override without persisting it', async () => {
+    await request(app).put('/api/settings').send({ w_effort: 0.5 });
+    const cheapHigh = await makeProject({ name: 'Cheap hard', priority: 'slightly_desired', effort_level: 'High' });
+    const dearLow = await makeProject({ name: 'Pricey easy', priority: 'slightly_desired', effort_level: 'Low' });
+    await addItem(dearLow, { name: 'Expensive thing', type: 'material', est_cost: 999 });
+
+    const effortOnly = await request(app).get('/api/projects/ranked?w_effort=1');
+    const costOnly = await request(app).get('/api/projects/ranked?w_effort=0');
+    const orderEffort = effortOnly.body.map((p) => p.id).filter((id) => id === cheapHigh || id === dearLow);
+    const orderCost = costOnly.body.map((p) => p.id).filter((id) => id === cheapHigh || id === dearLow);
+    expect(orderEffort).not.toEqual(orderCost);
+
+    const settings = await request(app).get('/api/settings');
+    expect(settings.body.w_effort).toBe(0.5);
+  });
+
+  it('drops est_cost / missing_count after an inventory match is added (FR4.3)', async () => {
+    const id = await makeProject({ name: 'Needs a saw', priority: 'highly_desired', effort_level: 'Medium' });
+    await addItem(id, { name: 'Circular Saw', type: 'tool', est_cost: 120 });
+
+    const before = (await request(app).get('/api/projects/ranked')).body.find((p) => p.id === id);
+    expect(before.missing_count).toBe(1);
+    expect(before.est_cost).toBe(120);
+
+    await request(app).post('/api/inventory').send({ name: 'circular saw', type: 'tool' });
+
+    const after = (await request(app).get('/api/projects/ranked')).body.find((p) => p.id === id);
+    expect(after.missing_count).toBe(0);
+    expect(after.est_cost).toBe(0);
+  });
+
+  it('GET /:id includes a correct gap block alongside guides', async () => {
+    const id = await makeProject({ name: 'Detail gap', priority: 'highly_desired' });
+    await addItem(id, { name: 'Owned Drill', type: 'tool', est_cost: 90 });
+    await addItem(id, { name: 'Missing Bolts', type: 'material', est_cost: 15 });
+    await request(app).post('/api/inventory').send({ name: 'owned drill', type: 'tool' });
+
+    const res = await request(app).get(`/api/projects/${id}`);
+    expect(Array.isArray(res.body.guides)).toBe(true);
+    expect(res.body.gap.missing_count).toBe(1);
+    expect(res.body.gap.est_cost).toBe(15);
+    const owned = res.body.gap.items.find((i) => i.name === 'Owned Drill');
+    expect(owned.owned).toBe(true);
+  });
+});
