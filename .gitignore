@@ -12,6 +12,9 @@ data/
 # Build output
 dist/
 build/
+dist-electron/
+!electron/build/
+!electron/build/**
 
 # Logs
 *.log

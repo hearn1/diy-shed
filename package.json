@@ -3,6 +3,8 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
+  "author": "hearn1",
+  "description": "Locally-hosted app that ranks your DIY projects by effort and out-of-pocket cost.",
   "main": "electron/main.js",
   "workspaces": ["server", "client", "electron"],
   "engines": {

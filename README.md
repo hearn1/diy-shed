@@ -28,6 +28,19 @@ npm start
 
 This builds the client and serves both the built UI and the API from a single port at [http://localhost:3000](http://localhost:3000) (client routes work on refresh via an SPA fallback).
 
+### Desktop app (Electron)
+
+An **alternative** to the `npm run dev` / `npm start` flow above (which stays the primary supported path): diy-shed can be packaged as a double-click desktop app that boots the same Express backend in-process and opens it in a native window.
+
+- **Run it locally** (against a fresh build): `npm run electron`.
+- **Build an unpacked app** for a local smoke test: `npm run pack:electron` (output under `dist-electron/`).
+- **Build installers** (Windows `nsis`, macOS `dmg`, Linux `AppImage`): `npm run dist:electron`.
+
+Notes:
+
+- It still uses your local **`claude` CLI** for automated research (same as the web flow). Manual entry of tools, materials, and effort works without it.
+- Data is stored in the OS **per-user data directory** (via Electron's `userData` path), **not** the repo's `data/` folder — so the desktop app and the `npm run dev` flow keep separate databases.
+
 ## Testing
 
 ```bash

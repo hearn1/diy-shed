@@ -5,6 +5,18 @@ All notable changes to diy-shed are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### M5 — Electron packaging
+- Optional **desktop app**: package diy-shed as a double-click installer
+  (Windows `nsis`, macOS `dmg`, Linux `AppImage`) via electron-builder, with the
+  native `better-sqlite3` module unpacked from the asar so it loads at runtime.
+- Electron main process boots the Express backend in-process on an OS-assigned
+  free port, stores the SQLite database in the per-user data directory, and
+  resolves the local `claude` CLI even when launched from Finder/Explorer.
+- Additive only — the `npm run dev` / `npm start` / `npm test` flows are
+  unchanged.
+
 ## [0.4.0] - 2026-07-09
 
 First tagged release, summarizing milestones M1–M4.
@@ -41,4 +53,5 @@ First tagged release, summarizing milestones M1–M4.
 - README rewrite (setup, features, environment, privacy), missing-CLI status
   banner polish with a concrete fix hint, and this release preparation.
 
+[Unreleased]: https://github.com/hearn1/diy-shed/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/hearn1/diy-shed/releases/tag/v0.4.0
