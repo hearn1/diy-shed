@@ -110,7 +110,7 @@ export default function ProjectDetailPage() {
     };
     try {
       const updated = await put(`/api/projects/${id}`, payload);
-      setProject((prev) => ({ ...updated, guides: prev?.guides ?? [] }));
+      setProject((prev) => ({ ...updated, guides: prev?.guides ?? [], gap: prev?.gap }));
     } catch (err) {
       setError(err.message);
     }
@@ -142,8 +142,10 @@ export default function ProjectDetailPage() {
     return <section>{error ? <p className="error">{error}</p> : <p>Loading…</p>}</section>;
   }
 
-  const tools = items.filter((i) => i.type === 'tool');
-  const materials = items.filter((i) => i.type === 'material');
+  const gapById = new Map((project.gap?.items ?? []).map((g) => [g.id, g]));
+  const enriched = items.map((i) => ({ ...i, owned: gapById.get(i.id)?.owned ?? false }));
+  const tools = enriched.filter((i) => i.type === 'tool');
+  const materials = enriched.filter((i) => i.type === 'material');
 
   return (
     <section>
@@ -203,6 +205,12 @@ export default function ProjectDetailPage() {
       )}
 
       <h3>Tools &amp; Materials</h3>
+      {project.gap && (
+        <p className="cost-summary">
+          {project.gap.missing_count} missing item{project.gap.missing_count === 1 ? '' : 's'} · estimated
+          out-of-pocket <strong>${project.gap.est_cost}</strong>
+        </p>
+      )}
       <ItemGroup title="Tools" items={tools} onEdit={startEditItem} onDelete={deleteItem} />
       <ItemGroup title="Materials" items={materials} onEdit={startEditItem} onDelete={deleteItem} />
 
@@ -296,9 +304,12 @@ function ItemGroup({ title, items, onEdit, onDelete }) {
       {items.length === 0 ? (
         <p className="empty">None yet.</p>
       ) : (
-        <ul>
+        <ul className="item-list">
           {items.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className={item.owned ? 'item-owned' : 'item-missing'}>
+              <span className={`item-badge ${item.owned ? 'owned' : 'missing'}`}>
+                {item.owned ? 'Owned' : 'Missing'}
+              </span>
               {item.name} — {item.est_cost != null ? `$${item.est_cost}` : '—'}
               <span className="actions">
                 <button onClick={() => onEdit(item)}>Edit</button>

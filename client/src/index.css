@@ -360,3 +360,48 @@ tr.researching {
   margin-left: 0.35rem;
   color: var(--muted);
 }
+
+/* --- M3 project-detail gap analysis --- */
+.cost-summary {
+  font-weight: 600;
+}
+
+.cost-summary strong {
+  color: oklch(48% 0.09 55);
+}
+
+.item-list {
+  list-style: none;
+  padding: 0;
+}
+
+.item-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.item-list li.item-owned {
+  color: var(--muted);
+}
+
+.item-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 100px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.item-badge.owned {
+  background: oklch(90% 0.05 145);
+  color: oklch(40% 0.09 145);
+}
+
+.item-badge.missing {
+  background: oklch(90% 0.05 40);
+  color: oklch(48% 0.12 40);
+}

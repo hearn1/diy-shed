@@ -16,7 +16,15 @@ const project = {
   effort_hours: 8,
   skill_level: 'Intermediate',
   research_summary: 'Frame it, sheathe it, roof it.',
-  guides: [{ id: 5, title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }]
+  guides: [{ id: 5, title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }],
+  gap: {
+    est_cost: 40,
+    missing_count: 1,
+    items: [
+      { id: 10, name: 'Circular Saw', type: 'tool', est_cost: 120, owned: true, matched_inventory_id: 7 },
+      { id: 11, name: 'Plywood', type: 'material', est_cost: 40, owned: false, matched_inventory_id: null }
+    ]
+  }
 };
 
 function renderPage() {
@@ -49,6 +57,21 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText(/Circular Saw/)).toBeInTheDocument();
     expect(screen.getByText(/Plywood/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Effort' })).toBeInTheDocument();
+  });
+
+  it('distinguishes owned vs missing items and shows the cost summary', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const saw = screen.getByText(/Circular Saw/).closest('li');
+    const plywood = screen.getByText(/Plywood/).closest('li');
+    expect(saw).toHaveClass('item-owned');
+    expect(saw.querySelector('.item-badge')).toHaveTextContent('Owned');
+    expect(plywood).toHaveClass('item-missing');
+    expect(plywood.querySelector('.item-badge')).toHaveTextContent('Missing');
+
+    expect(screen.getByText(/1 missing item/)).toBeInTheDocument();
+    expect(screen.getByText('$40')).toBeInTheDocument();
   });
 
   it('posts a new item to the items endpoint', async () => {
