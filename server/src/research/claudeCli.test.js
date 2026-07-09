@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { runClaude, isClaudeAvailable, resetClaudeAvailabilityCache } from './claudeCli.js';
-import { CLAUDE_BIN } from '../env.js';
+import { resolveClaudeBin } from './resolveBin.js';
 
 function fakeChild() {
   const child = new EventEmitter();
@@ -37,7 +37,7 @@ describe('runClaude', () => {
       return child;
     };
     const res = await runClaude('build a shed', { spawnImpl });
-    expect(captured.bin).toBe(CLAUDE_BIN);
+    expect(captured.bin).toBe(resolveClaudeBin());
     expect(captured.args).toEqual(['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json']);
     expect(captured.args).not.toContain('build a shed');
     expect(child.stdinData).toBe('build a shed');

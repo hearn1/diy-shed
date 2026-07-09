@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { CLAUDE_BIN, RESEARCH_TIMEOUT_MS } from '../env.js';
+import { RESEARCH_TIMEOUT_MS } from '../env.js';
+import { resolveClaudeBin } from './resolveBin.js';
 
 // The prompt (untrusted) is always sent over stdin, never the command line, so
 // nothing is interpolated into a shell string on any platform. On Windows a bare
@@ -8,6 +9,16 @@ import { CLAUDE_BIN, RESEARCH_TIMEOUT_MS } from '../env.js';
 // `.exe` path spawns directly, which also handles spaces in the path.
 function useShellFor(bin) {
   return process.platform === 'win32' && !/\.(exe|com)$/i.test(bin);
+}
+
+let resolvedBin;
+function claudeBin() {
+  if (resolvedBin === undefined) resolvedBin = resolveClaudeBin();
+  return resolvedBin;
+}
+
+export function resetResolvedClaudeBin() {
+  resolvedBin = undefined;
 }
 
 const RESEARCH_ARGS = ['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json'];
@@ -43,9 +54,10 @@ function parseCliJson(stdout) {
 
 export function runClaude(prompt, { timeoutMs = RESEARCH_TIMEOUT_MS, spawnImpl = spawn } = {}) {
   return new Promise((resolve) => {
+    const bin = claudeBin();
     let child;
     try {
-      child = spawnImpl(CLAUDE_BIN, RESEARCH_ARGS, { shell: useShellFor(CLAUDE_BIN) });
+      child = spawnImpl(bin, RESEARCH_ARGS, { shell: useShellFor(bin) });
     } catch (err) {
       resolve({ ok: false, error: err.message });
       return;
@@ -110,9 +122,10 @@ let availabilityCache;
 export function isClaudeAvailable({ spawnImpl = spawn } = {}) {
   if (availabilityCache !== undefined) return availabilityCache;
   availabilityCache = new Promise((resolve) => {
+    const bin = claudeBin();
     let child;
     try {
-      child = spawnImpl(CLAUDE_BIN, ['--version'], { shell: useShellFor(CLAUDE_BIN) });
+      child = spawnImpl(bin, ['--version'], { shell: useShellFor(bin) });
     } catch {
       resolve(false);
       return;
