@@ -25,7 +25,13 @@ export default function Layout() {
       </header>
       {cliMissing && !dismissed && (
         <div className="banner" role="alert">
-          <span>Claude Code CLI not found — projects will need manual entry.</span>
+          <span>
+            <strong>Claude Code CLI not found.</strong> Automated project research
+            is disabled — you can still add projects and enter tools, materials,
+            and effort manually. To enable research, install the Claude Code CLI,
+            run <code>claude login</code>, and make sure <code>claude</code> is on
+            your PATH.
+          </span>
           <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss">
             Dismiss
           </button>

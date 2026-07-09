@@ -38,6 +38,9 @@ describe('Layout', () => {
     renderLayout();
     const banner = await screen.findByRole('alert');
     expect(banner).toHaveTextContent(/Claude Code CLI not found/i);
+    expect(banner).toHaveTextContent(/claude login/i);
+    expect(banner).toHaveTextContent(/PATH/i);
+    expect(banner).toHaveTextContent(/manually/i);
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
