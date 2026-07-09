@@ -14,7 +14,8 @@
     "dev": "concurrently -k -n server,client -c blue,green \"npm -w server run dev\" \"npm -w client run dev\"",
     "build": "npm -w client run build",
     "start": "npm run build && npm -w server run start",
-    "electron": "npm run build && electron electron/main.js",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
+    "electron": "npm run build && npm run electron:rebuild && electron electron/main.js",
     "pack:electron": "npm run build && electron-builder --dir",
     "dist:electron": "npm run build && electron-builder",
     "test": "npm -w server run test && npm -w client run test"
@@ -25,6 +26,7 @@
     "express": "^4.21.2"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.6.1",
     "concurrently": "^9.1.0",
     "electron": "^33.3.0",
     "electron-builder": "^25.1.8"
