@@ -49,6 +49,34 @@ describe('analyzeGap', () => {
     expect(est_cost).toBe(30);
   });
 
+  it('marks an item owned via a fuzzy same-type subset match', () => {
+    const items = [tool('Cordless Drill', { id: 1, est_cost: 80 })];
+    const { items: analyzed, missing_count } = analyzeGap(items, [inv('drill', 'tool', { id: 5 })]);
+    expect(analyzed[0].owned).toBe(true);
+    expect(analyzed[0].matched_inventory_id).toBe(5);
+    expect(missing_count).toBe(0);
+  });
+
+  it('does not fuzzy-match a same-type item across differing type', () => {
+    const items = [tool('Cordless Drill', { id: 1 })];
+    const { items: analyzed } = analyzeGap(items, [inv('drill', 'material', { id: 5 })]);
+    expect(analyzed[0].owned).toBe(false);
+  });
+
+  it('forces missing when match_override is ignore even if a fuzzy match exists', () => {
+    const items = [tool('Cordless Drill', { id: 1, match_override: 'ignore' })];
+    const { items: analyzed } = analyzeGap(items, [inv('drill', 'tool', { id: 5 })]);
+    expect(analyzed[0].owned).toBe(false);
+    expect(analyzed[0].matched_inventory_id).toBe(null);
+  });
+
+  it('an explicit inventory_id wins over an ignore override', () => {
+    const items = [tool('Cordless Drill', { id: 1, inventory_id: 42, match_override: 'ignore' })];
+    const { items: analyzed } = analyzeGap(items, []);
+    expect(analyzed[0].owned).toBe(true);
+    expect(analyzed[0].matched_inventory_id).toBe(42);
+  });
+
   it('sums only missing item costs; owned items never contribute', () => {
     const items = [
       tool('Saw', { id: 1, est_cost: 100 }),

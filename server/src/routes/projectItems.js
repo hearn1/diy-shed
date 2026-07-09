@@ -1,7 +1,8 @@
 import express from 'express';
 import db from '../db/index.js';
 import { normalizeName } from '../util/normalize.js';
-import { ITEM_TYPES, isValidEnum } from '../util/validate.js';
+import { ITEM_TYPES, MATCH_OVERRIDES, isValidEnum } from '../util/validate.js';
+import { ownProjectItem } from '../util/ownership.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -62,10 +63,46 @@ router.put('/:itemId', (req, res) => {
     cols.push('est_cost = ?');
     vals.push(body.est_cost);
   }
+  if ('inventory_id' in body) {
+    const value = body.inventory_id;
+    if (value === null) {
+      cols.push('inventory_id = ?');
+      vals.push(null);
+    } else if (typeof value !== 'number' || !db.prepare('SELECT 1 FROM inventory WHERE id = ?').get(value)) {
+      return res.status(400).json({ error: 'invalid inventory_id' });
+    } else {
+      cols.push('inventory_id = ?');
+      vals.push(value);
+    }
+  }
+  if ('match_override' in body) {
+    if (!isValidEnum(body.match_override, MATCH_OVERRIDES)) {
+      return res.status(400).json({ error: 'invalid match_override' });
+    }
+    cols.push('match_override = ?');
+    vals.push(body.match_override);
+  }
   if (cols.length > 0) {
     vals.push(itemId);
     db.prepare(`UPDATE project_items SET ${cols.join(', ')} WHERE id = ?`).run(...vals);
   }
+  res.json(db.prepare('SELECT * FROM project_items WHERE id = ?').get(itemId));
+});
+
+router.post('/:itemId/own', (req, res) => {
+  const { projectId, itemId } = req.params;
+  const item = getItem(projectId, itemId);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const inventory = ownProjectItem(item);
+  const updated = db.prepare('SELECT * FROM project_items WHERE id = ?').get(itemId);
+  res.json({ item: updated, inventory });
+});
+
+router.post('/:itemId/unlink', (req, res) => {
+  const { projectId, itemId } = req.params;
+  const item = getItem(projectId, itemId);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  db.prepare("UPDATE project_items SET inventory_id = NULL, match_override = 'ignore' WHERE id = ?").run(itemId);
   res.json(db.prepare('SELECT * FROM project_items WHERE id = ?').get(itemId));
 });
 

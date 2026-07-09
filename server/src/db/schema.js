@@ -50,6 +50,7 @@ export function initSchema(db) {
 
   ensureColumn(db, 'projects', 'research_error', 'TEXT');
   ensureColumn(db, 'project_items', 'source', "TEXT NOT NULL DEFAULT 'manual'");
+  ensureColumn(db, 'project_items', 'match_override', "TEXT NOT NULL DEFAULT 'auto'");
 
   db.exec(`
     INSERT OR IGNORE INTO settings (key, value) VALUES ('w_effort','0.5'), ('w_cost','0.5');

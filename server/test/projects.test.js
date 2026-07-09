@@ -212,6 +212,57 @@ describe('projects ranking & gap', () => {
     expect(after.est_cost).toBe(0);
   });
 
+  it('completion-review lists only unowned tools, never materials', async () => {
+    const id = await makeProject({ name: 'Completion review' });
+    await addItem(id, { name: 'Jigsaw', type: 'tool', est_cost: 70 });
+    await addItem(id, { name: 'Owned Clamp', type: 'tool', est_cost: 12 });
+    await addItem(id, { name: 'Sandpaper', type: 'material', est_cost: 8 });
+    await request(app).post('/api/inventory').send({ name: 'owned clamp', type: 'tool' });
+
+    const res = await request(app).get(`/api/projects/${id}/completion-review`);
+    expect(res.status).toBe(200);
+    expect(res.body.tools.map((t) => t.name)).toEqual(['Jigsaw']);
+    expect(res.body.tools[0]).toEqual({ id: expect.any(Number), name: 'Jigsaw', est_cost: 70 });
+  });
+
+  it('complete adds selected tools to inventory and sets status done atomically', async () => {
+    const id = await makeProject({ name: 'Complete me' });
+    const jigsaw = await addItem(id, { name: 'Jigsaw', type: 'tool', est_cost: 70 });
+
+    const res = await request(app).post(`/api/projects/${id}/complete`).send({ add_item_ids: [jigsaw.body.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('done');
+    expect(res.body.gap.missing_count).toBe(0);
+
+    const inv = (await request(app).get('/api/inventory')).body.find((i) => i.normalized_name === 'jigsaw');
+    expect(inv).toBeTruthy();
+  });
+
+  it('complete with an empty add list just marks the project done', async () => {
+    const id = await makeProject({ name: 'Empty complete' });
+    await addItem(id, { name: 'Router', type: 'tool', est_cost: 90 });
+    const res = await request(app).post(`/api/projects/${id}/complete`).send({ add_item_ids: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('done');
+    expect(res.body.gap.missing_count).toBe(1);
+  });
+
+  it('complete is idempotent for an already-owned tool and rejects non-tool ids', async () => {
+    const id = await makeProject({ name: 'Idempotent complete' });
+    const clamp = await addItem(id, { name: 'Clamp', type: 'tool', est_cost: 12 });
+    const glue = await addItem(id, { name: 'Glue', type: 'material', est_cost: 5 });
+    await request(app).post('/api/inventory').send({ name: 'clamp', type: 'tool' });
+
+    expect(
+      (await request(app).post(`/api/projects/${id}/complete`).send({ add_item_ids: [glue.body.id] })).status
+    ).toBe(400);
+
+    const res = await request(app).post(`/api/projects/${id}/complete`).send({ add_item_ids: [clamp.body.id] });
+    expect(res.status).toBe(200);
+    const clamps = (await request(app).get('/api/inventory')).body.filter((i) => i.normalized_name === 'clamp');
+    expect(clamps).toHaveLength(1);
+  });
+
   it('GET /:id includes a correct gap block alongside guides', async () => {
     const id = await makeProject({ name: 'Detail gap', priority: 'highly_desired' });
     await addItem(id, { name: 'Owned Drill', type: 'tool', est_cost: 90 });
