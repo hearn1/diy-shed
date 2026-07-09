@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ProjectDetailPage from './ProjectDetailPage.jsx';
 import * as api from '../api/client.js';
@@ -106,6 +106,64 @@ describe('ProjectDetailPage', () => {
       effort_hours: 8,
       skill_level: 'Intermediate'
     });
+  });
+
+  it('marks a missing item owned via "I have this"', async () => {
+    let owned = false;
+    api.markItemOwned.mockImplementation(() => {
+      owned = true;
+      return Promise.resolve({});
+    });
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') {
+        const items = project.gap.items.map((i) => (i.id === 11 ? { ...i, owned } : i));
+        return Promise.resolve({ ...project, gap: { ...project.gap, items, missing_count: owned ? 0 : 1 } });
+      }
+      if (path === '/api/projects/1/items')
+        return Promise.resolve([
+          { id: 10, name: 'Circular Saw', type: 'tool', est_cost: 120 },
+          { id: 11, name: 'Plywood', type: 'material', est_cost: 40 }
+        ]);
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const plywood = screen.getByText(/Plywood/).closest('li');
+    expect(plywood).toHaveClass('item-missing');
+    fireEvent.click(within(plywood).getByRole('button', { name: 'I have this' }));
+
+    await waitFor(() => expect(api.markItemOwned).toHaveBeenCalledWith('1', 11));
+    await waitFor(() => expect(screen.getByText(/Plywood/).closest('li')).toHaveClass('item-owned'));
+  });
+
+  it('unlinks an owned item via "Not owned"', async () => {
+    let unlinked = false;
+    api.unlinkItem.mockImplementation(() => {
+      unlinked = true;
+      return Promise.resolve({});
+    });
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') {
+        const items = project.gap.items.map((i) => (i.id === 10 ? { ...i, owned: !unlinked } : i));
+        return Promise.resolve({ ...project, gap: { ...project.gap, items } });
+      }
+      if (path === '/api/projects/1/items')
+        return Promise.resolve([
+          { id: 10, name: 'Circular Saw', type: 'tool', est_cost: 120 },
+          { id: 11, name: 'Plywood', type: 'material', est_cost: 40 }
+        ]);
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const saw = screen.getByText(/Circular Saw/).closest('li');
+    expect(saw).toHaveClass('item-owned');
+    fireEvent.click(within(saw).getByRole('button', { name: 'Not owned' }));
+
+    await waitFor(() => expect(api.unlinkItem).toHaveBeenCalledWith('1', 10));
+    await waitFor(() => expect(screen.getByText(/Circular Saw/).closest('li')).toHaveClass('item-missing'));
   });
 
   it('shows a friendly message when the project is missing', async () => {

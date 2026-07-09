@@ -36,6 +36,14 @@ export function rerunResearch(projectId) {
   return post(`/api/projects/${projectId}/research`);
 }
 
+export function markItemOwned(projectId, itemId) {
+  return post(`/api/projects/${projectId}/items/${itemId}/own`);
+}
+
+export function unlinkItem(projectId, itemId) {
+  return post(`/api/projects/${projectId}/items/${itemId}/unlink`);
+}
+
 export function getHealth() {
   return get('/api/health');
 }

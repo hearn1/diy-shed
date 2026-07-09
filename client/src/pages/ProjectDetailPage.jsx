@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { get, post, put, del, rerunResearch } from '../api/client.js';
+import { get, post, put, del, rerunResearch, markItemOwned, unlinkItem } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 
 const EMPTY_ITEM = { name: '', type: 'tool', est_cost: '' };
@@ -95,6 +95,26 @@ export default function ProjectDetailPage() {
       await del(`/api/projects/${id}/items/${item.id}`);
       if (editingItemId === item.id) resetItemForm();
       loadItems();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function ownItem(item) {
+    setError('');
+    try {
+      await markItemOwned(id, item.id);
+      loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function notOwnedItem(item) {
+    setError('');
+    try {
+      await unlinkItem(id, item.id);
+      loadProject();
     } catch (err) {
       setError(err.message);
     }
@@ -211,8 +231,22 @@ export default function ProjectDetailPage() {
           out-of-pocket <strong>${project.gap.est_cost}</strong>
         </p>
       )}
-      <ItemGroup title="Tools" items={tools} onEdit={startEditItem} onDelete={deleteItem} />
-      <ItemGroup title="Materials" items={materials} onEdit={startEditItem} onDelete={deleteItem} />
+      <ItemGroup
+        title="Tools"
+        items={tools}
+        onEdit={startEditItem}
+        onDelete={deleteItem}
+        onOwn={ownItem}
+        onUnlink={notOwnedItem}
+      />
+      <ItemGroup
+        title="Materials"
+        items={materials}
+        onEdit={startEditItem}
+        onDelete={deleteItem}
+        onOwn={ownItem}
+        onUnlink={notOwnedItem}
+      />
 
       <form onSubmit={submitItem}>
         <label>
@@ -297,7 +331,7 @@ export default function ProjectDetailPage() {
   );
 }
 
-function ItemGroup({ title, items, onEdit, onDelete }) {
+function ItemGroup({ title, items, onEdit, onDelete, onOwn, onUnlink }) {
   return (
     <div>
       <h4>{title}</h4>
@@ -312,6 +346,11 @@ function ItemGroup({ title, items, onEdit, onDelete }) {
               </span>
               {item.name} — {item.est_cost != null ? `$${item.est_cost}` : '—'}
               <span className="actions">
+                {item.owned ? (
+                  <button onClick={() => onUnlink(item)}>Not owned</button>
+                ) : (
+                  <button onClick={() => onOwn(item)}>I have this</button>
+                )}
                 <button onClick={() => onEdit(item)}>Edit</button>
                 <button className="danger" onClick={() => onDelete(item)}>
                   Delete
