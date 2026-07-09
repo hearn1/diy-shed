@@ -1,5 +1,6 @@
 {
   "name": "diy-shed",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "workspaces": ["server", "client"],
