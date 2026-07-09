@@ -3,6 +3,7 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.js",
   "workspaces": ["server", "client", "electron"],
   "engines": {
     "node": ">=20"
@@ -12,9 +13,17 @@
     "build": "npm -w client run build",
     "start": "npm run build && npm -w server run start",
     "electron": "npm run build && electron electron/main.js",
+    "pack:electron": "npm run build && electron-builder --dir",
+    "dist:electron": "npm run build && electron-builder",
     "test": "npm -w server run test && npm -w client run test"
   },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "electron-builder": "^25.1.8"
   }
 }

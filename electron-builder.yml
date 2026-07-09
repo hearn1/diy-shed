@@ -1,0 +1,20 @@
+appId: com.hearn1.diyshed
+productName: diy-shed
+directories:
+  output: dist-electron
+  buildResources: electron/build
+files:
+  - electron/**
+  - server/**
+  - client/dist/**
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+win:
+  target: nsis
+  icon: electron/build/icon.ico
+mac:
+  target: dmg
+  icon: electron/build/icon.icns
+linux:
+  target: AppImage
+  icon: electron/build/icon.png
