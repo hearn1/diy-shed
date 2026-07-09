@@ -4,8 +4,9 @@ import { STATUSES, PRIORITIES, EFFORT_LEVELS, SKILL_LEVELS, isValidEnum } from '
 import { enqueue } from '../research/queue.js';
 import { researchProject } from '../research/runner.js';
 import { isClaudeAvailable } from '../research/claudeCli.js';
-import { analyzeProjectGap } from '../ranking/gap.js';
+import { analyzeProjectGap, itemIsOwned } from '../ranking/gap.js';
 import { rankProjects } from '../ranking/score.js';
+import { ownProjectItem } from '../util/ownership.js';
 
 const router = express.Router();
 
@@ -49,9 +50,7 @@ router.get('/ranked', (req, res) => {
   res.json(rankProjects(withCost, wEffort));
 });
 
-router.get('/:id', (req, res) => {
-  const row = getProject(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Project not found' });
+function buildProjectResponse(row) {
   const analyzed = analyzeProjectGap(row.id, db);
   const gap = {
     est_cost: analyzed.est_cost,
@@ -65,7 +64,49 @@ router.get('/:id', (req, res) => {
       matched_inventory_id: i.matched_inventory_id
     }))
   };
-  res.json({ ...row, guides: getGuides(row.id), gap });
+  return { ...row, guides: getGuides(row.id), gap };
+}
+
+router.get('/:id', (req, res) => {
+  const row = getProject(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Project not found' });
+  res.json(buildProjectResponse(row));
+});
+
+router.get('/:id/completion-review', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  const analyzed = analyzeProjectGap(project.id, db);
+  const tools = analyzed.items
+    .filter((i) => i.type === 'tool' && !i.owned)
+    .map((i) => ({ id: i.id, name: i.name, est_cost: i.est_cost }));
+  res.json({ tools });
+});
+
+router.post('/:id/complete', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  const addItemIds = req.body?.add_item_ids ?? [];
+  if (!Array.isArray(addItemIds)) {
+    return res.status(400).json({ error: 'add_item_ids must be an array' });
+  }
+  const items = [];
+  for (const itemId of addItemIds) {
+    const item = db.prepare('SELECT * FROM project_items WHERE id = ? AND project_id = ?').get(itemId, project.id);
+    if (!item || item.type !== 'tool') {
+      return res.status(400).json({ error: 'add_item_ids must reference tools of this project' });
+    }
+    items.push(item);
+  }
+  db.transaction(() => {
+    const inventory = db.prepare('SELECT * FROM inventory').all();
+    for (const item of items) {
+      if (itemIsOwned(item, inventory).owned) continue;
+      ownProjectItem(item);
+    }
+    db.prepare("UPDATE projects SET status = 'done' WHERE id = ?").run(project.id);
+  })();
+  res.json(buildProjectResponse(getProject(project.id)));
 });
 
 router.post('/', async (req, res) => {

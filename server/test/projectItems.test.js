@@ -81,6 +81,63 @@ describe('project items API', () => {
     expect(remaining).toBe(0);
   });
 
+  it('own creates one inventory row and links it; a second identical own reuses it', async () => {
+    const pid = await newProject();
+    const item = await request(app).post(`/api/projects/${pid}/items`).send({ name: 'Cordless Drill', type: 'tool' });
+
+    const owned = await request(app).post(`/api/projects/${pid}/items/${item.body.id}/own`);
+    expect(owned.status).toBe(200);
+    expect(owned.body.item.inventory_id).toBe(owned.body.inventory.id);
+    expect(owned.body.item.match_override).toBe('auto');
+    expect(owned.body.inventory.normalized_name).toBe('cordless drill');
+
+    const pid2 = await newProject();
+    const item2 = await request(app).post(`/api/projects/${pid2}/items`).send({ name: 'cordless drill', type: 'tool' });
+    const owned2 = await request(app).post(`/api/projects/${pid2}/items/${item2.body.id}/own`);
+    expect(owned2.body.inventory.id).toBe(owned.body.inventory.id);
+
+    const dupes = db
+      .prepare("SELECT COUNT(*) c FROM inventory WHERE type = 'tool' AND normalized_name = 'cordless drill'")
+      .get().c;
+    expect(dupes).toBe(1);
+  });
+
+  it('unlink clears the link and persists an ignore override across refetch', async () => {
+    const pid = await newProject();
+    const item = await request(app).post(`/api/projects/${pid}/items`).send({ name: 'Hand Saw', type: 'tool' });
+    await request(app).post('/api/inventory').send({ name: 'saw', type: 'tool' });
+
+    const before = (await request(app).get(`/api/projects/${pid}`)).body.gap.items.find((i) => i.id === item.body.id);
+    expect(before.owned).toBe(true);
+
+    const unlinked = await request(app).post(`/api/projects/${pid}/items/${item.body.id}/unlink`);
+    expect(unlinked.status).toBe(200);
+    expect(unlinked.body.inventory_id).toBe(null);
+    expect(unlinked.body.match_override).toBe('ignore');
+
+    const after = (await request(app).get(`/api/projects/${pid}`)).body.gap.items.find((i) => i.id === item.body.id);
+    expect(after.owned).toBe(false);
+  });
+
+  it('validates inventory_id on PUT and clears it with null', async () => {
+    const pid = await newProject();
+    const item = await request(app).post(`/api/projects/${pid}/items`).send({ name: 'Wrench', type: 'tool' });
+    const invRow = await request(app).post('/api/inventory').send({ name: 'Wrench', type: 'tool' });
+
+    expect(
+      (await request(app).put(`/api/projects/${pid}/items/${item.body.id}`).send({ inventory_id: 999999 })).status
+    ).toBe(400);
+
+    const linked = await request(app)
+      .put(`/api/projects/${pid}/items/${item.body.id}`)
+      .send({ inventory_id: invRow.body.id });
+    expect(linked.status).toBe(200);
+    expect(linked.body.inventory_id).toBe(invRow.body.id);
+
+    const cleared = await request(app).put(`/api/projects/${pid}/items/${item.body.id}`).send({ inventory_id: null });
+    expect(cleared.body.inventory_id).toBe(null);
+  });
+
   it('round-trips effort fields via the projects PUT', async () => {
     const pid = await newProject();
     const res = await request(app)
