@@ -1,11 +1,23 @@
 import express from 'express';
 import db from '../db/index.js';
 import { STATUSES, PRIORITIES, EFFORT_LEVELS, SKILL_LEVELS, isValidEnum } from '../util/validate.js';
+import { enqueue } from '../research/queue.js';
+import { researchProject } from '../research/runner.js';
+import { isClaudeAvailable } from '../research/claudeCli.js';
 
 const router = express.Router();
 
 function getProject(id) {
   return db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+}
+
+function getGuides(projectId) {
+  return db.prepare('SELECT * FROM guides WHERE project_id = ? ORDER BY id').all(projectId);
+}
+
+function startResearch(id) {
+  db.prepare("UPDATE projects SET status = 'researching', research_error = NULL WHERE id = ?").run(id);
+  enqueue(() => researchProject(id)).catch(() => {});
 }
 
 router.get('/', (req, res) => {
@@ -16,10 +28,10 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const row = getProject(req.params.id);
   if (!row) return res.status(404).json({ error: 'Project not found' });
-  res.json(row);
+  res.json({ ...row, guides: getGuides(row.id) });
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { name, description, priority, status } = req.body ?? {};
   if (typeof name !== 'string' || name.trim() === '') {
     return res.status(400).json({ error: 'name is required' });
@@ -48,7 +60,24 @@ router.post('/', (req, res) => {
   const info = db
     .prepare(`INSERT INTO projects (${cols.join(', ')}) VALUES (${placeholders})`)
     .run(...vals);
-  res.status(201).json(getProject(info.lastInsertRowid));
+  const id = info.lastInsertRowid;
+
+  // Research is skipped for manual/test creation (an explicit status or
+  // ?research=false) and when the Claude CLI is unavailable — the project then
+  // stays a normal, manually-editable row. Otherwise it kicks off asynchronously
+  // and the 201 returns immediately.
+  const researchOptOut = status !== undefined || req.query.research === 'false';
+  if (!researchOptOut && (await isClaudeAvailable())) {
+    startResearch(id);
+  }
+  res.status(201).json(getProject(id));
+});
+
+router.post('/:id/research', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  startResearch(project.id);
+  res.status(202).json(getProject(project.id));
 });
 
 const UPDATABLE = {

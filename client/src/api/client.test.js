@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { get, post, del } from './client.js';
+import { get, post, del, rerunResearch, getHealth } from './client.js';
 
 beforeEach(() => {
   global.fetch = vi.fn();
@@ -43,5 +43,20 @@ describe('api client', () => {
     global.fetch.mockResolvedValue({ ok: true, status: 204 });
     const result = await del('/api/projects/1');
     expect(result).toBeNull();
+  });
+
+  it('rerunResearch POSTs to the project research endpoint', async () => {
+    global.fetch.mockResolvedValue({ ok: true, status: 202, json: () => Promise.resolve({ id: 7 }) });
+    await rerunResearch(7);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toBe('/api/projects/7/research');
+    expect(options.method).toBe('POST');
+  });
+
+  it('getHealth GETs the health endpoint', async () => {
+    global.fetch.mockResolvedValue(okResponse({ status: 'ok', claude: { available: true } }));
+    const data = await getHealth();
+    expect(global.fetch).toHaveBeenCalledWith('/api/health', expect.objectContaining({ method: 'GET' }));
+    expect(data).toEqual({ status: 'ok', claude: { available: true } });
   });
 });

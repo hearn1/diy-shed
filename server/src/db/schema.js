@@ -12,6 +12,7 @@ export function initSchema(db) {
       effort_hours REAL,
       skill_level TEXT CHECK (skill_level IN ('Beginner','Intermediate','Advanced')),
       research_summary TEXT,
+      research_error TEXT,
       researched_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -31,6 +32,7 @@ export function initSchema(db) {
       normalized_name TEXT NOT NULL,
       type TEXT NOT NULL CHECK (type IN ('tool','material')),
       est_cost REAL,
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','research')),
       inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL
     );
     CREATE TABLE IF NOT EXISTS guides (
@@ -46,7 +48,18 @@ export function initSchema(db) {
     );
   `);
 
+  ensureColumn(db, 'projects', 'research_error', 'TEXT');
+  ensureColumn(db, 'project_items', 'source', "TEXT NOT NULL DEFAULT 'manual'");
+
   db.exec(`
     INSERT OR IGNORE INTO settings (key, value) VALUES ('w_effort','0.5'), ('w_cost','0.5');
   `);
+}
+
+function ensureColumn(db, table, column, definition) {
+  const exists = db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .some((c) => c.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

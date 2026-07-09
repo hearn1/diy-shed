@@ -4,7 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 import App from './App.jsx';
 
 vi.mock('./api/client.js', () => ({
-  get: vi.fn(() => Promise.resolve([]))
+  get: vi.fn(() => Promise.resolve([])),
+  getHealth: vi.fn(() => Promise.resolve({ status: 'ok', claude: { available: true } }))
 }));
 
 describe('App', () => {

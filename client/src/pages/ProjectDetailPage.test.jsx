@@ -14,7 +14,9 @@ const project = {
   status: 'ready',
   effort_level: 'Medium',
   effort_hours: 8,
-  skill_level: 'Intermediate'
+  skill_level: 'Intermediate',
+  research_summary: 'Frame it, sheathe it, roof it.',
+  guides: [{ id: 5, title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }]
 };
 
 function renderPage() {
@@ -87,5 +89,48 @@ describe('ProjectDetailPage', () => {
     api.get.mockImplementation(() => Promise.reject(new Error('Project not found')));
     renderPage();
     expect(await screen.findByRole('heading', { name: 'Project not found' })).toBeInTheDocument();
+  });
+
+  it('renders research summary, effort estimate and a guide link that opens in a new tab', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.getByText('Frame it, sheathe it, roof it.')).toBeInTheDocument();
+    expect(screen.getByText(/Estimated effort: Medium/)).toBeInTheDocument();
+    const guide = screen.getByRole('link', { name: 'Shed 101' });
+    expect(guide).toHaveAttribute('href', 'https://example.com/shed');
+    expect(guide).toHaveAttribute('target', '_blank');
+    expect(guide).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('confirms and calls the re-run endpoint', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    api.rerunResearch.mockResolvedValue({ id: 1, status: 'researching' });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Re-run research' }));
+    await waitFor(() => expect(api.rerunResearch).toHaveBeenCalledWith('1'));
+  });
+
+  it('shows researching messaging and hides re-run while researching', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'researching' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.getByText(/Researching guides, tools & cost/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Re-run research' })).not.toBeInTheDocument();
+  });
+
+  it('shows the failure message when research failed', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1')
+        return Promise.resolve({ ...project, status: 'research_failed', research_error: 'timeout' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.getByText(/Research failed: timeout/i)).toBeInTheDocument();
   });
 });

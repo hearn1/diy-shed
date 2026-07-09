@@ -31,3 +31,11 @@ export function put(path, body) {
 export function del(path) {
   return request('DELETE', path);
 }
+
+export function rerunResearch(projectId) {
+  return post(`/api/projects/${projectId}/research`);
+}
+
+export function getHealth() {
+  return get('/api/health');
+}
