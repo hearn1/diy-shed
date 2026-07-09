@@ -1,12 +1,13 @@
-export function inventoryKey(row) {
-  return `${row.type}:${row.normalized_name}`;
-}
+import { findInventoryMatch } from '../util/match.js';
 
-export function itemIsOwned(item, inventoryByKey) {
+export function itemIsOwned(item, inventory) {
   if (item.inventory_id != null) {
     return { owned: true, matched_inventory_id: item.inventory_id };
   }
-  const match = inventoryByKey.get(inventoryKey(item));
+  if (item.match_override === 'ignore') {
+    return { owned: false, matched_inventory_id: null };
+  }
+  const match = findInventoryMatch(item, inventory);
   if (match) {
     return { owned: true, matched_inventory_id: match.id };
   }
@@ -14,15 +15,9 @@ export function itemIsOwned(item, inventoryByKey) {
 }
 
 export function analyzeGap(items, inventory) {
-  const inventoryByKey = new Map();
-  for (const row of inventory) {
-    const key = inventoryKey(row);
-    if (!inventoryByKey.has(key)) inventoryByKey.set(key, row);
-  }
-
   const analyzed = items.map((item) => ({
     ...item,
-    ...itemIsOwned(item, inventoryByKey)
+    ...itemIsOwned(item, inventory)
   }));
 
   const missing = analyzed.filter((item) => !item.owned);
