@@ -166,6 +166,58 @@ describe('ProjectDetailPage', () => {
     await waitFor(() => expect(screen.getByText(/Circular Saw/).closest('li')).toHaveClass('item-missing'));
   });
 
+  it('opens a pre-checked completion modal and completes with the checked tools', async () => {
+    let done = false;
+    api.getCompletionReview.mockResolvedValue({ tools: [{ id: 10, name: 'Circular Saw', est_cost: 120 }] });
+    api.completeProject.mockImplementation(() => {
+      done = true;
+      return Promise.resolve({});
+    });
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: done ? 'done' : 'ready' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as done' }));
+    await waitFor(() => expect(api.getCompletionReview).toHaveBeenCalledWith('1'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Completion review' });
+    const checkbox = within(dialog).getByRole('checkbox');
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Mark done' }));
+    await waitFor(() => expect(api.completeProject).toHaveBeenCalledWith('1', [10]));
+    await waitFor(() => expect(screen.getByText(/Status: Done/)).toBeInTheDocument());
+  });
+
+  it('omits an unchecked tool from the completion payload', async () => {
+    api.getCompletionReview.mockResolvedValue({ tools: [{ id: 10, name: 'Circular Saw', est_cost: 120 }] });
+    api.completeProject.mockResolvedValue({});
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as done' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Completion review' });
+    fireEvent.click(within(dialog).getByRole('checkbox'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Mark done' }));
+
+    await waitFor(() => expect(api.completeProject).toHaveBeenCalledWith('1', []));
+  });
+
+  it('marks done directly when there are no unowned tools', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    api.getCompletionReview.mockResolvedValue({ tools: [] });
+    api.completeProject.mockResolvedValue({});
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as done' }));
+    await waitFor(() => expect(api.completeProject).toHaveBeenCalledWith('1', []));
+    expect(screen.queryByRole('dialog', { name: 'Completion review' })).not.toBeInTheDocument();
+  });
+
   it('shows a friendly message when the project is missing', async () => {
     api.get.mockImplementation(() => Promise.reject(new Error('Project not found')));
     renderPage();

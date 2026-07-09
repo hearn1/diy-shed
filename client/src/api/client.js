@@ -44,6 +44,14 @@ export function unlinkItem(projectId, itemId) {
   return post(`/api/projects/${projectId}/items/${itemId}/unlink`);
 }
 
+export function getCompletionReview(projectId) {
+  return get(`/api/projects/${projectId}/completion-review`);
+}
+
+export function completeProject(projectId, addItemIds) {
+  return post(`/api/projects/${projectId}/complete`, { add_item_ids: addItemIds });
+}
+
 export function getHealth() {
   return get('/api/health');
 }

@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { get, post, put, del, rerunResearch, markItemOwned, unlinkItem } from '../api/client.js';
+import {
+  get,
+  post,
+  put,
+  del,
+  rerunResearch,
+  markItemOwned,
+  unlinkItem,
+  getCompletionReview,
+  completeProject
+} from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 
 const EMPTY_ITEM = { name: '', type: 'tool', est_cost: '' };
@@ -17,6 +27,8 @@ export default function ProjectDetailPage() {
   const [itemForm, setItemForm] = useState(EMPTY_ITEM);
   const [editingItemId, setEditingItemId] = useState(null);
   const [effort, setEffort] = useState({ effort_level: '', effort_hours: '', skill_level: '' });
+  const [completionTools, setCompletionTools] = useState(null);
+  const [checkedTools, setCheckedTools] = useState({});
 
   function loadItems() {
     get(`/api/projects/${id}/items`)
@@ -120,6 +132,44 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function startCompletion() {
+    setError('');
+    try {
+      const { tools } = await getCompletionReview(id);
+      if (tools.length === 0) {
+        if (!window.confirm('Mark this project as done?')) return;
+        await completeProject(id, []);
+        loadProject();
+        return;
+      }
+      setCompletionTools(tools);
+      setCheckedTools(Object.fromEntries(tools.map((t) => [t.id, true])));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function toggleTool(toolId) {
+    setCheckedTools((prev) => ({ ...prev, [toolId]: !prev[toolId] }));
+  }
+
+  function cancelCompletion() {
+    setCompletionTools(null);
+    setCheckedTools({});
+  }
+
+  async function confirmCompletion() {
+    setError('');
+    const checkedIds = completionTools.filter((t) => checkedTools[t.id]).map((t) => t.id);
+    try {
+      await completeProject(id, checkedIds);
+      cancelCompletion();
+      loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function saveEffort(e) {
     e.preventDefault();
     setError('');
@@ -171,6 +221,7 @@ export default function ProjectDetailPage() {
     <section>
       <div className="actions">
         <h2>{project.name}</h2>
+        {project.status !== 'done' && <button onClick={startCompletion}>Mark as done</button>}
         <Link to={`/projects/${id}/edit`}>Edit</Link>
       </div>
       {project.description && <p>{project.description}</p>}
@@ -178,6 +229,32 @@ export default function ProjectDetailPage() {
         Priority: {labelFor(PRIORITIES, project.priority)} · Status: {labelFor(STATUSES, project.status)}
       </p>
       {error && <p className="error">{error}</p>}
+
+      {completionTools && (
+        <div className="completion-review" role="dialog" aria-label="Completion review">
+          <p>You used these tools — add them to your inventory?</p>
+          <ul className="item-list">
+            {completionTools.map((tool) => (
+              <li key={tool.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!checkedTools[tool.id]}
+                    onChange={() => toggleTool(tool.id)}
+                  />
+                  {tool.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="actions">
+            <button className="primary" onClick={confirmCompletion}>
+              Mark done
+            </button>
+            <button onClick={cancelCompletion}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       <div className="actions">
         <h3>Research</h3>
