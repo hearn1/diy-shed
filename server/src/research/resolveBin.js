@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -69,11 +70,51 @@ export function isOnPath(cmd = 'claude', opts = {}) {
   return false;
 }
 
+function isPackaged(env) {
+  return Boolean(env.DIYSHED_PACKAGED) || Boolean(process.versions.electron);
+}
+
+// Best-effort login-shell PATH; empty string on any failure/timeout.
+function defaultShellProbe({ env = process.env } = {}) {
+  const shell = env.SHELL || '/bin/sh';
+  try {
+    return execFileSync(shell, ['-lic', 'echo $PATH'], {
+      encoding: 'utf8',
+      timeout: 1000,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function commonInstallDirs(home) {
+  return ['/usr/local/bin', '/opt/homebrew/bin', path.join(home, '.local', 'bin'), path.join(home, '.npm-global', 'bin')];
+}
+
+// A GUI-launched (double-clicked) packaged app on macOS/Linux inherits a
+// minimal PATH, so an npm-global `claude` on the login-shell PATH is invisible.
+// Merge the login-shell PATH and common install dirs before the PATH check.
+// No-op when not packaged or on Windows (GUI apps there inherit the user PATH).
+export function augmentedEnv(opts = {}) {
+  const env = opts.env ?? process.env;
+  const platform = opts.platform ?? process.platform;
+  if (platform === 'win32' || !isPackaged(env)) return env;
+  const home = opts.home ?? os.homedir();
+  const shellProbe = opts.shellProbe ?? defaultShellProbe;
+  const parts = [
+    ...(env.PATH || '').split(path.delimiter),
+    ...(shellProbe({ env }) || '').split(path.delimiter),
+    ...commonInstallDirs(home)
+  ].filter(Boolean);
+  return { ...env, PATH: [...new Set(parts)].join(path.delimiter) };
+}
+
 // Resolution order: explicit override → `claude` on PATH → bundled desktop-app
 // CLI → bare `claude` (lets the OS/shell try, and degrades gracefully if absent).
 export function resolveClaudeBin(opts = {}) {
   const env = opts.env ?? process.env;
   if (env.DIYSHED_CLAUDE_BIN) return env.DIYSHED_CLAUDE_BIN;
-  if (isOnPath('claude', opts)) return 'claude';
+  if (isOnPath('claude', { ...opts, env: augmentedEnv(opts) })) return 'claude';
   return discoverBundledClaude(opts) || 'claude';
 }

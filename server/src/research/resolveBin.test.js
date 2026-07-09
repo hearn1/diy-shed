@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { bundledClaudeDirs, discoverBundledClaude, isOnPath, resolveClaudeBin } from './resolveBin.js';
+import { describe, it, expect, vi } from 'vitest';
+import { augmentedEnv, bundledClaudeDirs, discoverBundledClaude, isOnPath, resolveClaudeBin } from './resolveBin.js';
 
 // Minimal in-memory fs: a set of existing paths + a dir->entries map. Path
 // matching is case-insensitive to mirror Windows filesystem semantics.
@@ -91,5 +91,30 @@ describe('resolveClaudeBin precedence', () => {
     const fsImpl = fakeFs(new Set(), {});
     const env = { APPDATA: 'C:\\a', PATH: 'C:\\bin', PATHEXT: '.EXE' };
     expect(resolveClaudeBin({ platform: 'win32', env, fsImpl })).toBe('claude');
+  });
+});
+
+describe('resolveClaudeBin packaged PATH probe (posix)', () => {
+  it('finds claude via the probed login-shell PATH when packaged', () => {
+    const fsImpl = fakeFs(new Set(['/opt/claude/claude']), {});
+    const env = { DIYSHED_PACKAGED: '1', PATH: '/usr/bin' };
+    const shellProbe = vi.fn(() => '/opt/claude');
+    const bin = resolveClaudeBin({ platform: 'linux', env, fsImpl, shellProbe, home: '/home/u' });
+    expect(bin).toBe('claude');
+    expect(shellProbe).toHaveBeenCalled();
+  });
+
+  it('does not probe or alter resolution when not packaged', () => {
+    const fsImpl = fakeFs(new Set(['/opt/claude/claude']), {});
+    const env = { PATH: '/usr/bin' };
+    const shellProbe = vi.fn(() => '/opt/claude');
+    const bin = resolveClaudeBin({ platform: 'linux', env, fsImpl, shellProbe, home: '/home/u' });
+    expect(bin).toBe('claude');
+    expect(shellProbe).not.toHaveBeenCalled();
+  });
+
+  it('augmentedEnv is a no-op when not packaged', () => {
+    const env = { PATH: '/usr/bin' };
+    expect(augmentedEnv({ platform: 'linux', env, shellProbe: () => '/x' })).toBe(env);
   });
 });
