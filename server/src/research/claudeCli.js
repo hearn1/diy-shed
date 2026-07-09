@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
-import { RESEARCH_TIMEOUT_MS } from '../env.js';
+import { CLAUDE_BIN, RESEARCH_TIMEOUT_MS } from '../env.js';
 
-// On Windows `claude` is a `.cmd` shim, which Node refuses to spawn with
-// shell:false (EINVAL, CVE-2024-27980). We therefore spawn through the shell on
-// win32 so PATHEXT resolves it, and keep the (untrusted) prompt off the command
-// line entirely — it is written to stdin — so nothing is interpolated into a
-// shell string on any platform.
-const USE_SHELL = process.platform === 'win32';
+// The prompt (untrusted) is always sent over stdin, never the command line, so
+// nothing is interpolated into a shell string on any platform. On Windows a bare
+// `claude` / `.cmd` shim can only be resolved through the shell (Node refuses to
+// spawn a `.cmd` with shell:false — EINVAL, CVE-2024-27980), but a concrete
+// `.exe` path spawns directly, which also handles spaces in the path.
+function useShellFor(bin) {
+  return process.platform === 'win32' && !/\.(exe|com)$/i.test(bin);
+}
 
 const RESEARCH_ARGS = ['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json'];
 
@@ -43,7 +45,7 @@ export function runClaude(prompt, { timeoutMs = RESEARCH_TIMEOUT_MS, spawnImpl =
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl('claude', RESEARCH_ARGS, { shell: USE_SHELL });
+      child = spawnImpl(CLAUDE_BIN, RESEARCH_ARGS, { shell: useShellFor(CLAUDE_BIN) });
     } catch (err) {
       resolve({ ok: false, error: err.message });
       return;
@@ -82,11 +84,18 @@ export function runClaude(prompt, { timeoutMs = RESEARCH_TIMEOUT_MS, spawnImpl =
     });
     child.on('error', (err) => finish({ ok: false, error: err.message }));
     child.on('close', (code) => {
+      // The `--output-format json` envelope carries the real reason (e.g. "Not
+      // logged in") even on a non-zero exit, so prefer it over the exit code.
+      const parsed = stdout.trim() ? parseCliJson(stdout) : null;
       if (code !== 0) {
-        finish({ ok: false, error: stderr.trim() || `claude exited with code ${code}`, raw: stdout });
+        const message = (parsed && !parsed.ok && parsed.error) || stderr.trim() || `claude exited with code ${code}`;
+        finish({ ok: false, error: message, raw: stdout });
         return;
       }
-      const parsed = parseCliJson(stdout);
+      if (!parsed) {
+        finish({ ok: false, error: stderr.trim() || 'claude produced no output', raw: stdout });
+        return;
+      }
       if (!parsed.ok) {
         finish({ ok: false, error: parsed.error, raw: stdout });
         return;
@@ -103,7 +112,7 @@ export function isClaudeAvailable({ spawnImpl = spawn } = {}) {
   availabilityCache = new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl('claude', ['--version'], { shell: USE_SHELL });
+      child = spawnImpl(CLAUDE_BIN, ['--version'], { shell: useShellFor(CLAUDE_BIN) });
     } catch {
       resolve(false);
       return;

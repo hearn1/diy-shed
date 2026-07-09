@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { runClaude, isClaudeAvailable, resetClaudeAvailabilityCache } from './claudeCli.js';
+import { CLAUDE_BIN } from '../env.js';
 
 function fakeChild() {
   const child = new EventEmitter();
@@ -36,7 +37,7 @@ describe('runClaude', () => {
       return child;
     };
     const res = await runClaude('build a shed', { spawnImpl });
-    expect(captured.bin).toBe('claude');
+    expect(captured.bin).toBe(CLAUDE_BIN);
     expect(captured.args).toEqual(['-p', '--allowedTools', 'WebSearch,WebFetch', '--output-format', 'json']);
     expect(captured.args).not.toContain('build a shed');
     expect(child.stdinData).toBe('build a shed');
@@ -70,6 +71,23 @@ describe('runClaude', () => {
     const res = await runClaude('x', { spawnImpl });
     expect(res.ok).toBe(false);
     expect(res.error).toContain('boom');
+  });
+
+  it('surfaces the JSON envelope error message on a non-zero exit', async () => {
+    const spawnImpl = () => {
+      const child = fakeChild();
+      queueMicrotask(() => {
+        child.stdout.emit(
+          'data',
+          JSON.stringify({ type: 'result', is_error: true, result: 'Not logged in · Please run /login' })
+        );
+        child.emit('close', 1);
+      });
+      return child;
+    };
+    const res = await runClaude('x', { spawnImpl });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('Not logged in · Please run /login');
   });
 
   it('kills the child and resolves ok:false error:timeout on timeout', async () => {
