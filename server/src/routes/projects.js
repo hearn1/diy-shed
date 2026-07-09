@@ -4,6 +4,8 @@ import { STATUSES, PRIORITIES, EFFORT_LEVELS, SKILL_LEVELS, isValidEnum } from '
 import { enqueue } from '../research/queue.js';
 import { researchProject } from '../research/runner.js';
 import { isClaudeAvailable } from '../research/claudeCli.js';
+import { analyzeProjectGap } from '../ranking/gap.js';
+import { rankProjects } from '../ranking/score.js';
 
 const router = express.Router();
 
@@ -20,15 +22,50 @@ function startResearch(id) {
   enqueue(() => researchProject(id)).catch(() => {});
 }
 
+function storedWEffort() {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'w_effort'").get();
+  const w = row ? Number(row.value) : 0.5;
+  return Number.isFinite(w) ? w : 0.5;
+}
+
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM projects ORDER BY created_at DESC, id DESC').all();
   res.json(rows);
 });
 
+router.get('/ranked', (req, res) => {
+  const projects = db.prepare("SELECT * FROM projects WHERE status != 'done'").all();
+  const withCost = projects.map((p) => {
+    const { est_cost, missing_count } = analyzeProjectGap(p.id, db);
+    return { ...p, est_cost, missing_count };
+  });
+
+  let wEffort = storedWEffort();
+  const override = Number(req.query.w_effort);
+  if (req.query.w_effort !== undefined && Number.isFinite(override) && override >= 0 && override <= 1) {
+    wEffort = override;
+  }
+
+  res.json(rankProjects(withCost, wEffort));
+});
+
 router.get('/:id', (req, res) => {
   const row = getProject(req.params.id);
   if (!row) return res.status(404).json({ error: 'Project not found' });
-  res.json({ ...row, guides: getGuides(row.id) });
+  const analyzed = analyzeProjectGap(row.id, db);
+  const gap = {
+    est_cost: analyzed.est_cost,
+    missing_count: analyzed.missing_count,
+    items: analyzed.items.map((i) => ({
+      id: i.id,
+      name: i.name,
+      type: i.type,
+      est_cost: i.est_cost,
+      owned: i.owned,
+      matched_inventory_id: i.matched_inventory_id
+    }))
+  };
+  res.json({ ...row, guides: getGuides(row.id), gap });
 });
 
 router.post('/', async (req, res) => {

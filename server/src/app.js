@@ -5,6 +5,7 @@ import express from 'express';
 import projectsRouter from './routes/projects.js';
 import inventoryRouter from './routes/inventory.js';
 import projectItemsRouter from './routes/projectItems.js';
+import settingsRouter from './routes/settings.js';
 import { isClaudeAvailable } from './research/claudeCli.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +23,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects/:projectId/items', projectItemsRouter);
 app.use('/api/inventory', inventoryRouter);
+app.use('/api/settings', settingsRouter);
 
 const distDir = process.env.DIYSHED_CLIENT_DIST
   ? path.resolve(process.env.DIYSHED_CLIENT_DIST)
