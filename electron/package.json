@@ -1,10 +1,7 @@
 {
-  "name": "electron",
+  "name": "diy-shed-electron",
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "main": "main.js",
-  "devDependencies": {
-    "electron": "^33.3.0"
-  }
+  "main": "main.js"
 }

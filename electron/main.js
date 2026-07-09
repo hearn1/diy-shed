@@ -4,6 +4,9 @@ import { app, BrowserWindow } from 'electron';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Keep the per-user data dir stable ("diy-shed") in both dev and packaged runs.
+app.setName('diy-shed');
+
 function clientDistDir() {
   if (app.isPackaged) return path.join(process.resourcesPath, 'client', 'dist');
   return path.join(__dirname, '..', 'client', 'dist');
