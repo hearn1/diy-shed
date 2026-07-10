@@ -8,7 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.setName('diy-shed');
 
 function clientDistDir() {
-  if (app.isPackaged) return path.join(process.resourcesPath, 'client', 'dist');
+  // Packaged: client/dist lives inside app.asar (app root); Electron's fs reads
+  // it transparently. Dev: the repo's built client next to this file.
+  if (app.isPackaged) return path.join(app.getAppPath(), 'client', 'dist');
   return path.join(__dirname, '..', 'client', 'dist');
 }
 
