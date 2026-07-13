@@ -3,7 +3,7 @@ import db from '../db/index.js';
 import { STATUSES, PRIORITIES, EFFORT_LEVELS, SKILL_LEVELS, isValidEnum } from '../util/validate.js';
 import { enqueue } from '../research/queue.js';
 import { researchProject } from '../research/runner.js';
-import { isClaudeAvailable } from '../research/claudeCli.js';
+import { isSelectedProviderAvailable } from '../research/selection.js';
 import { analyzeProjectGap, itemIsOwned } from '../ranking/gap.js';
 import { rankProjects } from '../ranking/score.js';
 import { ownProjectItem } from '../util/ownership.js';
@@ -141,11 +141,11 @@ router.post('/', async (req, res) => {
   const id = info.lastInsertRowid;
 
   // Research is skipped for manual/test creation (an explicit status or
-  // ?research=false) and when the Claude CLI is unavailable — the project then
-  // stays a normal, manually-editable row. Otherwise it kicks off asynchronously
-  // and the 201 returns immediately.
+  // ?research=false) and when no provider is configured or the selected one is
+  // unavailable — the project then stays a normal, manually-editable row.
+  // Otherwise it kicks off asynchronously and the 201 returns immediately.
   const researchOptOut = status !== undefined || req.query.research === 'false';
-  if (!researchOptOut && (await isClaudeAvailable())) {
+  if (!researchOptOut && (await isSelectedProviderAvailable(db))) {
     startResearch(id);
   }
   res.status(201).json(getProject(id));

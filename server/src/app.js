@@ -6,7 +6,7 @@ import projectsRouter from './routes/projects.js';
 import inventoryRouter from './routes/inventory.js';
 import projectItemsRouter from './routes/projectItems.js';
 import settingsRouter from './routes/settings.js';
-import { isClaudeAvailable } from './research/claudeCli.js';
+import { getHealthStatus } from './research/health.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
@@ -16,8 +16,7 @@ const app = express();
 app.use(express.json());
 
 app.get('/api/health', async (req, res) => {
-  const available = await isClaudeAvailable();
-  res.json({ status: 'ok', claude: { available } });
+  res.json(await getHealthStatus());
 });
 
 app.use('/api/projects', projectsRouter);
