@@ -1,8 +1,9 @@
 import { claudeProvider } from './claude.js';
+import { geminiProvider } from './gemini.js';
 
 // Ordered registry of every research provider. Order is the presentation order
-// (Claude first, the default-established integration; further providers after).
-const providers = [claudeProvider];
+// (Claude first, the default-established integration; Gemini after).
+const providers = [claudeProvider, geminiProvider];
 const byId = new Map(providers.map((p) => [p.id, p]));
 
 export const providerIds = providers.map((p) => p.id);
