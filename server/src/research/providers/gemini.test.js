@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { geminiProvider, resolveGeminiBin, resetResolvedGeminiBin } from './gemini.js';
+import { runProviderContractTests } from './contract.shared.js';
+
+runProviderContractTests(() => geminiProvider, {
+  expectedJson: { summary: 'ok' },
+  successStdout: JSON.stringify({ response: '{"summary":"ok"}', stats: {} }),
+  errorStdout: JSON.stringify({ error: { message: 'boom' } }),
+  errorCode: 1,
+  invalidStdout: 'not json at all'
+});
 
 function fakeChild() {
   const child = new EventEmitter();

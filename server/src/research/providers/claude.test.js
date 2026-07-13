@@ -2,6 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { claudeProvider, useShellFor } from './claude.js';
 import { resolveClaudeBin } from '../resolveBin.js';
+import { runProviderContractTests } from './contract.shared.js';
+
+runProviderContractTests(() => claudeProvider, {
+  expectedJson: { summary: 'ok' },
+  successStdout: JSON.stringify({ type: 'result', result: '{"summary":"ok"}' }),
+  errorStderr: 'boom',
+  errorCode: 1,
+  invalidStdout: 'not json at all'
+});
 
 function fakeChild() {
   const child = new EventEmitter();
