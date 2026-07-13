@@ -6,11 +6,15 @@ import request from 'supertest';
 
 const enqueue = vi.fn(() => Promise.resolve());
 const researchProject = vi.fn(() => Promise.resolve('ready'));
-const isClaudeAvailable = vi.fn(() => Promise.resolve(false));
+const isSelectedProviderAvailable = vi.fn(() => Promise.resolve(false));
 
 vi.mock('../src/research/queue.js', () => ({ enqueue: (fn) => enqueue(fn) }));
 vi.mock('../src/research/runner.js', () => ({ researchProject: (id) => researchProject(id) }));
-vi.mock('../src/research/claudeCli.js', () => ({ isClaudeAvailable: () => isClaudeAvailable() }));
+vi.mock('../src/research/selection.js', () => ({
+  isSelectedProviderAvailable: () => isSelectedProviderAvailable(),
+  getSelectedProviderId: () => null,
+  setSelectedProviderId: () => null
+}));
 
 const dbPath = path.join(os.tmpdir(), `diy-shed-projects-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
 process.env.DIYSHED_DB = dbPath;
@@ -24,8 +28,8 @@ beforeAll(async () => {
 beforeEach(() => {
   enqueue.mockClear();
   researchProject.mockClear();
-  isClaudeAvailable.mockReset();
-  isClaudeAvailable.mockResolvedValue(false);
+  isSelectedProviderAvailable.mockReset();
+  isSelectedProviderAvailable.mockResolvedValue(false);
 });
 
 afterAll(() => {
@@ -108,24 +112,24 @@ describe('projects API', () => {
 });
 
 describe('projects research triggering', () => {
-  it('returns 201 immediately and enqueues research when the CLI is available', async () => {
-    isClaudeAvailable.mockResolvedValue(true);
+  it('returns 201 immediately and enqueues research when the selected provider is available', async () => {
+    isSelectedProviderAvailable.mockResolvedValue(true);
     const res = await request(app).post('/api/projects').send({ name: 'Auto research' });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('researching');
     expect(enqueue).toHaveBeenCalledTimes(1);
   });
 
-  it('creates as ready and does not enqueue when the CLI is unavailable', async () => {
-    isClaudeAvailable.mockResolvedValue(false);
-    const res = await request(app).post('/api/projects').send({ name: 'No CLI' });
+  it('creates as ready and does not enqueue when no provider is configured', async () => {
+    isSelectedProviderAvailable.mockResolvedValue(false);
+    const res = await request(app).post('/api/projects').send({ name: 'No provider' });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('ready');
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('skips research on ?research=false even when the CLI is available', async () => {
-    isClaudeAvailable.mockResolvedValue(true);
+  it('skips research on ?research=false even when the selected provider is available', async () => {
+    isSelectedProviderAvailable.mockResolvedValue(true);
     const res = await request(app).post('/api/projects?research=false').send({ name: 'Manual only' });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('ready');
