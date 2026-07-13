@@ -1,14 +1,15 @@
 import defaultDb from '../db/index.js';
-import { runClaude as defaultRunClaude } from './claudeCli.js';
+import { getProvider } from './providers/index.js';
+import { getSelectedProviderId } from './selection.js';
 import { buildResearchPrompt } from './prompt.js';
 import { validateResearchResult } from './schema.js';
 import { normalizeName } from '../util/normalize.js';
 
-async function attempt(project, runClaude) {
+async function attempt(project, provider) {
   const prompt = buildResearchPrompt({ name: project.name, description: project.description });
   let res;
   try {
-    res = await runClaude(prompt);
+    res = await provider.run(prompt);
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -18,29 +19,48 @@ async function attempt(project, runClaude) {
   return { ok: true, value: validated.value };
 }
 
+// Resolve the provider to run this research with. A test may inject `deps.provider`
+// directly; otherwise the stored selection is used. There is no silent fallback:
+// an unset or unavailable selection fails fast to research_failed.
+async function resolveProvider(db, deps) {
+  if (deps.provider) return { ok: true, provider: deps.provider };
+  const id = getSelectedProviderId(db);
+  if (!id) return { ok: false, error: 'No AI provider configured' };
+  const lookup = deps.getProvider || getProvider;
+  const provider = lookup(id);
+  if (!provider) return { ok: false, error: `Unknown AI provider: ${id}` };
+  const availability = await provider.isAvailable();
+  if (!availability || !availability.available) {
+    return { ok: false, error: `${provider.label} is not available` };
+  }
+  return { ok: true, provider };
+}
+
+function fail(db, projectId, error) {
+  db.prepare("UPDATE projects SET status = 'research_failed', research_error = ? WHERE id = ?").run(error, projectId);
+  return 'research_failed';
+}
+
 // Research replaces only research-sourced rows: it deletes and reinserts
 // project_items with source='research' and all guides for the project. Rows the
 // user added manually (source='manual') and any inventory_id links are left
 // untouched.
 export async function researchProject(projectId, deps = {}) {
   const db = deps.db || defaultDb;
-  const runClaude = deps.runClaude || defaultRunClaude;
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
   if (!project) return 'research_failed';
 
   db.prepare("UPDATE projects SET status = 'researching', research_error = NULL WHERE id = ?").run(projectId);
 
-  let result = await attempt(project, runClaude);
-  if (!result.ok) result = await attempt(project, runClaude);
+  const resolved = await resolveProvider(db, deps);
+  if (!resolved.ok) return fail(db, projectId, resolved.error);
+  const { provider } = resolved;
 
-  if (!result.ok) {
-    db.prepare("UPDATE projects SET status = 'research_failed', research_error = ? WHERE id = ?").run(
-      result.error,
-      projectId
-    );
-    return 'research_failed';
-  }
+  let result = await attempt(project, provider);
+  if (!result.ok) result = await attempt(project, provider);
+
+  if (!result.ok) return fail(db, projectId, result.error);
 
   const { summary, effort, guides, tools, materials } = result.value;
   const persist = db.transaction(() => {
@@ -48,13 +68,14 @@ export async function researchProject(projectId, deps = {}) {
       `UPDATE projects
          SET status = 'ready',
              research_summary = ?,
+             research_provider = ?,
              effort_level = ?,
              effort_hours = ?,
              skill_level = ?,
              researched_at = datetime('now'),
              research_error = NULL
        WHERE id = ?`
-    ).run(summary, effort.level, effort.hours, effort.skill, projectId);
+    ).run(summary, provider.id, effort.level, effort.hours, effort.skill, projectId);
 
     db.prepare('DELETE FROM guides WHERE project_id = ?').run(projectId);
     const insertGuide = db.prepare('INSERT INTO guides (project_id, title, url, summary) VALUES (?,?,?,?)');
@@ -71,11 +92,7 @@ export async function researchProject(projectId, deps = {}) {
   try {
     persist();
   } catch (err) {
-    db.prepare("UPDATE projects SET status = 'research_failed', research_error = ? WHERE id = ?").run(
-      err.message,
-      projectId
-    );
-    return 'research_failed';
+    return fail(db, projectId, err.message);
   }
   return 'ready';
 }

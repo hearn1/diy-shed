@@ -49,6 +49,7 @@ export function initSchema(db) {
   `);
 
   ensureColumn(db, 'projects', 'research_error', 'TEXT');
+  ensureColumn(db, 'projects', 'research_provider', 'TEXT');
   ensureColumn(db, 'project_items', 'source', "TEXT NOT NULL DEFAULT 'manual'");
   ensureColumn(db, 'project_items', 'match_override', "TEXT NOT NULL DEFAULT 'auto'");
 
