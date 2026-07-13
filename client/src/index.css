@@ -405,3 +405,100 @@ tr.researching {
   background: oklch(90% 0.05 40);
   color: oklch(48% 0.12 40);
 }
+
+/* AI provider setup / settings */
+.setup {
+  max-width: 640px;
+}
+
+.setup-intro {
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+}
+
+.provider-picker {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.provider-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.provider-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.provider-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.provider-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.provider-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.5rem;
+  border-radius: 100px;
+  background: oklch(90% 0.05 145);
+  color: oklch(40% 0.09 145);
+}
+
+.provider-blurb {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.setup-step {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.provider-status {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+}
+
+.provider-status.status-ready {
+  background: oklch(95% 0.04 145);
+  border-color: oklch(80% 0.06 145);
+  color: oklch(38% 0.09 145);
+}
+
+.provider-status.status-signed_out,
+.provider-status.status-not_installed {
+  background: #fbeecb;
+  border-color: #e6d49b;
+  color: #6b4e12;
+}
+
+.provider-hint {
+  color: inherit;
+}
+
+.setup-ready {
+  font-weight: 700;
+  color: oklch(38% 0.09 145);
+}

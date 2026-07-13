@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import { getHealth } from '../api/client.js';
 
 export default function Layout() {
-  const [cliMissing, setCliMissing] = useState(false);
+  const [health, setHealth] = useState(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     getHealth()
-      .then((health) => setCliMissing(health?.claude?.available === false))
-      .catch(() => setCliMissing(false));
+      .then(setHealth)
+      .catch(() => setHealth(null));
   }, []);
+
+  const noProvider = health ? !health.selectedProvider : false;
 
   return (
     <div className="app">
@@ -23,14 +25,13 @@ export default function Layout() {
           <NavLink to="/inventory">Inventory</NavLink>
         </nav>
       </header>
-      {cliMissing && !dismissed && (
+      {noProvider && !dismissed && (
         <div className="banner" role="alert">
           <span>
-            <strong>Claude Code CLI not found.</strong> Automated project research
-            is disabled — you can still add projects and enter tools, materials,
-            and effort manually. To enable research, install the Claude Code CLI,
-            run <code>claude login</code>, and make sure <code>claude</code> is on
-            your PATH.
+            <strong>Finish setting up AI research.</strong> No provider is selected
+            yet, so automated project research is off - you can still add projects
+            and enter tools, materials, and effort manually.{' '}
+            <Link to="/setup">Set up AI research</Link>.
           </span>
           <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss">
             Dismiss

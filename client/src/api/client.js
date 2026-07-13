@@ -64,6 +64,10 @@ export function updateSettings({ w_effort }) {
   return put('/api/settings', { w_effort });
 }
 
+export function setProvider(provider) {
+  return put('/api/settings/provider', { provider });
+}
+
 export function getRankedProjects(wEffort) {
   const query = wEffort === undefined ? '' : `?w_effort=${wEffort}`;
   return get(`/api/projects/ranked${query}`);
