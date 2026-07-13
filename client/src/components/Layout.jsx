@@ -23,6 +23,7 @@ export default function Layout() {
             Projects
           </NavLink>
           <NavLink to="/inventory">Inventory</NavLink>
+          <NavLink to="/settings">Settings</NavLink>
         </nav>
       </header>
       {noProvider && !dismissed && (
