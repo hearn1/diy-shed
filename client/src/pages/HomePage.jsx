@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getRankedProjects, getSettings, updateSettings, del, rerunResearch } from '../api/client.js';
 import { PRIORITIES, PRIORITY_CLASS, EFFORT_LEVELS, labelFor } from '../constants.js';
+import { looksLikeProviderError } from '../providerMeta.js';
 
 const POLL_MS = 4000;
 const PREVIEW_DEBOUNCE_MS = 175;
@@ -163,6 +164,11 @@ function ProjectCard({ project: p, onDelete, onRetry }) {
         {p.status === 'research_failed' && (
           <p className="research-failed">
             <span className="error">Research failed{p.research_error ? `: ${p.research_error}` : ''}</span>
+            {looksLikeProviderError(p.research_error) && (
+              <span className="research-hint">
+                Check your AI provider in <Link to="/settings">Settings</Link>.
+              </span>
+            )}
             <button onClick={() => onRetry(p)}>Retry</button>
           </p>
         )}

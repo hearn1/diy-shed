@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveStatus, providerEntry, statusHint } from './providerMeta.js';
+import { deriveStatus, providerEntry, statusHint, looksLikeProviderError } from './providerMeta.js';
 
 describe('deriveStatus', () => {
   it('is not_installed when the provider is unavailable', () => {
@@ -42,5 +42,20 @@ describe('statusHint', () => {
 
   it('has no hint when ready', () => {
     expect(statusHint('gemini', 'ready')).toBe('');
+  });
+});
+
+describe('looksLikeProviderError', () => {
+  it('flags provider/auth-related failures', () => {
+    expect(looksLikeProviderError('No AI provider configured')).toBe(true);
+    expect(looksLikeProviderError('Gemini is not available')).toBe(true);
+    expect(looksLikeProviderError('please login and try again')).toBe(true);
+    expect(looksLikeProviderError('quota exceeded')).toBe(true);
+  });
+
+  it('does not flag unrelated failures', () => {
+    expect(looksLikeProviderError('timeout')).toBe(false);
+    expect(looksLikeProviderError('')).toBe(false);
+    expect(looksLikeProviderError(null)).toBe(false);
   });
 });

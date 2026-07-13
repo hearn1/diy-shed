@@ -502,3 +502,8 @@ tr.researching {
   font-weight: 700;
   color: oklch(38% 0.09 145);
 }
+
+.research-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

@@ -58,3 +58,12 @@ export function statusHint(id, status) {
   if (status === 'signed_out') return meta.signedOutHint;
   return '';
 }
+
+// Whether a research_error reads like a provider/auth problem (vs a transient
+// timeout or bad model output), so the UI can point the user at Settings.
+export function looksLikeProviderError(error) {
+  if (!error) return false;
+  return /provider|not available|not installed|sign(ed)?[\s-]?(in|out)|log[\s-]?in|auth|configured|credential|quota/i.test(
+    error
+  );
+}
