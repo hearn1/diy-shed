@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-13
+
+### M6 — Pluggable AI providers & free Gemini onboarding
+- **Provider-neutral research**: research now runs through a pluggable provider
+  interface (`server/src/research/providers/`) so any AI CLI can back it, with a
+  shared contract test suite keeping providers interchangeable.
+- **Free Gemini backend**: a Gemini CLI provider that signs in with a Google
+  account in the browser (no API key), alongside the existing Claude Code path.
+- **Guided first-run setup**: a fresh install has **no silent default** — a setup
+  wizard walks the user through picking a provider, signing in, and testing the
+  connection before anything auto-researches.
+- **Provider settings & status**: a Settings screen to switch providers and
+  re-test the connection, a provider-aware status banner (no provider / not
+  installed / signed out), per-result provider recording, and provider-aware
+  `/api/health` and settings API. `DIYSHED_GEMINI_BIN` joins `DIYSHED_CLAUDE_BIN`;
+  the selected provider is stored in the local DB (`ai_provider`), not `.env`.
+
 ### M5 — Electron packaging
 - Optional **desktop app**: package diy-shed as a double-click installer
   (Windows `nsis`, macOS `dmg`, Linux `AppImage`) via electron-builder, with the
@@ -53,5 +70,6 @@ First tagged release, summarizing milestones M1–M4.
 - README rewrite (setup, features, environment, privacy), missing-CLI status
   banner polish with a concrete fix hint, and this release preparation.
 
-[Unreleased]: https://github.com/hearn1/diy-shed/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/hearn1/diy-shed/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/hearn1/diy-shed/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hearn1/diy-shed/releases/tag/v0.4.0
