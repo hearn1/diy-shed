@@ -12,6 +12,7 @@ import {
   completeProject
 } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
+import { looksLikeProviderError } from '../providerMeta.js';
 
 const EMPTY_ITEM = { name: '', type: 'tool', est_cost: '' };
 const POLL_MS = 4000;
@@ -275,6 +276,9 @@ export default function ProjectDetailPage() {
         <p className="error">
           Research failed{project.research_error ? `: ${project.research_error}` : ''}. Use Re-run research to try
           again, or enter tools, materials and effort manually below.
+          {looksLikeProviderError(project.research_error) && (
+            <> Check your AI provider in <Link to="/settings">Settings</Link>.</>
+          )}
         </p>
       ) : (
         <>

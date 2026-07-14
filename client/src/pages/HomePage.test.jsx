@@ -80,4 +80,15 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(api.rerunResearch).toHaveBeenCalledWith(3));
   });
+
+  it('points to Settings when a failure looks provider-related, but not for a plain timeout', async () => {
+    api.getRankedProjects.mockResolvedValue([
+      { id: 3, name: 'Fence', priority: 'urgent_fix', status: 'research_failed', research_error: 'Gemini is not available', rank: 1, missing_count: 0, est_cost: 0 },
+      { id: 4, name: 'Gate', priority: 'urgent_fix', status: 'research_failed', research_error: 'timeout', rank: 2, missing_count: 0, est_cost: 0 }
+    ]);
+    renderPage();
+    const settingsLink = await screen.findByRole('link', { name: 'Settings' });
+    expect(settingsLink).toHaveAttribute('href', '/settings');
+    expect(screen.getAllByRole('link', { name: 'Settings' })).toHaveLength(1);
+  });
 });

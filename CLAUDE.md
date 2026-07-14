@@ -52,6 +52,7 @@ Two workspaces, one shared SQLite database.
 - The effort/cost weight is a **single slider**: only `w_effort` is meaningful; `w_cost = 1 − w_effort`.
 - **Tools vs materials differ at completion**: tools are reusable (offer to add to inventory when a project is Done), materials are consumed (never auto-suggested). See FR7.
 - Claude research (M2) will spawn `claude -p ... --allowedTools WebSearch,WebFetch --output-format json` as a child process — **no filesystem/shell tools granted**, schema-validated response, one retry then `research_failed`. It must degrade gracefully when the CLI is absent.
+- Research is now **provider-pluggable** (M6): the runner selects a provider (Claude or free Gemini) behind a common interface in [server/src/research/providers/](server/src/research/providers/). There is **no silent default** — the provider is stored in `settings.ai_provider` and chosen via the first-run wizard / Settings screen.
 
 ## Design
 
