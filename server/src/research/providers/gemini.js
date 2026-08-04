@@ -26,7 +26,12 @@ export function resetResolvedGeminiBin() {
   resolvedBin = undefined;
 }
 
-const RESEARCH_ARGS = ['--output-format', 'json'];
+// Pinned rather than left to the CLI's model router: research turns are
+// tool-heavy (WebSearch/WebFetch) and the router was landing them on
+// gemini-3.5-flash, which has a much tighter free-tier daily cap than the
+// flash-lite tier. 3.5-flash-lite has the same free-tier headroom as
+// 3.1-flash-lite with newer-generation quality.
+const RESEARCH_ARGS = ['--output-format', 'json', '-m', 'gemini-3.5-flash-lite'];
 
 // The prompt (untrusted) is piped over stdin rather than passed via `-p`, so it
 // is never interpolated into a shell string — the Gemini CLI installs as a

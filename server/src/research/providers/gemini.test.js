@@ -56,7 +56,7 @@ describe('geminiProvider.run', () => {
     const res = await geminiProvider.run('build a shed', {
       spawnImpl: emit({ stdout: { response: '{"summary":"ok"}', stats: {} }, captureInto: (c) => (cap = c) })
     });
-    expect(cap.args).toEqual(['--output-format', 'json']);
+    expect(cap.args).toEqual(['--output-format', 'json', '-m', 'gemini-3.5-flash-lite']);
     expect(cap.args).not.toContain('build a shed');
     expect(cap.child.stdinData).toBe('build a shed');
     expect(res).toEqual(expect.objectContaining({ ok: true, json: { summary: 'ok' } }));
