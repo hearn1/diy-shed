@@ -1,59 +1,74 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## What this is
 
-diy-shed is a locally-hosted web app that helps a homeowner decide **which DIY project to tackle next**. Users add projects; the app researches each one on the web (via the user's local Claude Code CLI, not an API key), determines required tools/materials, compares against inventory the user owns, and ranks projects by effort and out-of-pocket cost. All data lives in a local SQLite file — nothing leaves the machine except the web searches Claude runs during research.
+diy-shed is a **local-first desktop/web app that helps a homeowner decide which DIY project to tackle next**. The user adds projects; an AI CLI researches each one on the web to produce a summary, guide links, an effort estimate, and a tools/materials list; the app compares that list against the inventory the user already owns and ranks projects by effort and out-of-pocket cost. All data lives in a local SQLite file. Nothing leaves the machine except the web searches the AI CLI performs.
 
-The full spec and the milestone roadmap live in [requirements.md](requirements.md). The current state is roughly **M1 (skeleton)**: full CRUD for projects/inventory/project-items with manual entry. Claude Code research (M2), ranking/gap-analysis (M3), completion reconciliation (M4), and Electron packaging (M5) are not built yet — check requirements.md before assuming a feature exists.
+The app is feature-complete through project research, ranking, gap analysis, completion reconciliation, Electron packaging, and multi-provider AI setup (v0.5.0). [requirements.md](requirements.md) holds the original spec, but it predates the provider work — **trust the code over requirements.md** where they disagree.
 
 ## Commands
 
-Run from the repo root (npm workspaces: `server` and `client`).
+npm workspaces: `server`, `client`, `electron`. Node >= 20.
 
 - `npm install` — installs all workspaces.
-- `npm run dev` — runs server (`:3000`) and Vite dev server (`:5173`) together via `concurrently`. **Open the Vite URL** (`http://localhost:5173`); its `/api` calls are proxied to the server.
-- `npm start` — production: builds the client, then serves the built UI *and* the API from `:3000` on a single port (SPA fallback for client routes).
-- `npm test` — runs server tests then client tests.
+- `npm run dev` — server (`:3000`) + Vite (`:5173`) concurrently. **Open the Vite URL**; `/api` is proxied.
+- `npm start` — builds the client, then serves UI *and* API from `:3000` (SPA fallback).
+- `npm run build` — client production build only.
+- `npm test` — server tests then client tests (both Vitest).
+- `npm -w server run test` / `npm -w client run test` — one side.
+- `npm -w server run test -- projects` — single file by name filter. Same for client.
+- `npm run electron` — build + `electron-rebuild` for better-sqlite3 + launch the desktop shell.
 
-Per-workspace / single-test:
-- `npm -w server run test` / `npm -w client run test` — one side only (both use Vitest).
-- `npm -w server run test -- projects` — run a single server test file by name filter (Vitest positional). Same pattern for client: `npm -w client run test -- HomePage`.
-- `npm -w server run dev` — server alone with `node --watch`.
+Verify changes with `npm test` **and** `npm run build`.
 
 ## Architecture
 
-Two workspaces, one shared SQLite database.
+### Server (`server/`) — Express 4 + better-sqlite3, ESM
 
-### Server (`server/`) — Express + better-sqlite3, ESM
-
-- [src/index.js](server/src/index.js) is the entrypoint: imports `./env.js` (which loads the repo-root `.env` via dotenv) **first**, then starts the app. [src/app.js](server/src/app.js) builds the Express app and is imported directly by tests (no listener) — keep the listen/build split.
-- [src/app.js](server/src/app.js) mounts three routers under `/api` and, **if `client/dist` exists**, serves it statically with a `*` SPA fallback that skips `/api/*`. This is why `npm start` works as a single port. The dist dir can be overridden with `DIYSHED_CLIENT_DIST`.
-- [src/db/index.js](server/src/db/index.js) opens the DB **at import time** and exports a singleton `db`. Routers `import db` and call `db.prepare(...)` synchronously (better-sqlite3 is sync). WAL mode and `foreign_keys = ON` are set on open. Because the DB path is read from `process.env.DIYSHED_DB` at import, tests set that env var *before* importing `app.js` (see any `server/test/*.test.js`).
-- [src/db/schema.js](server/src/db/schema.js) is the single source of truth for the schema (`CREATE TABLE IF NOT EXISTS` run on every open) and seeds default ranking weights into `settings` (`w_effort`, `w_cost`). Tables: `projects`, `inventory`, `project_items`, `guides`, `settings`. Enum constraints are enforced in SQL via `CHECK`.
-- Routes ([routes/projects.js](server/src/routes/projects.js), [routes/inventory.js](server/src/routes/inventory.js), [routes/projectItems.js](server/src/routes/projectItems.js)) are thin: validate → prepared statement → JSON. `projectItems` is mounted at `/api/projects/:projectId/items` with `mergeParams: true`. Validation uses enum lists from [util/validate.js](server/src/util/validate.js); PUT handlers build partial updates from an allow-list of columns.
+- `src/app.js` builds and exports the Express app with no listener; `src/server.js` exposes `startServer()`; `src/index.js` is the CLI entrypoint and imports `./env.js` **first** (dotenv from repo root). Tests import `app.js` directly — keep the build/listen split.
+- `src/db/index.js` opens the database **at module-import time** and exports a singleton `db`. The path comes from `process.env.DIYSHED_DB`, read at import, which is why every server test sets that env var *before* importing `app.js`. better-sqlite3 is **synchronous** — never `await` a `db` call.
+- `src/db/schema.js` is the only schema definition. It runs `CREATE TABLE IF NOT EXISTS` on every open and uses an `ensureColumn()` helper for **additive-only** migrations of existing tables. There is no migration framework, no version table, no down-migrations. New tables go in the `db.exec` block; new columns on existing tables go through `ensureColumn`.
+- Tables: `projects`, `inventory`, `project_items`, `guides`, `settings` (a plain key/value table).
+- Routers under `/api`: `projects`, `projects/:projectId/items` (mounted with `mergeParams: true`), `inventory`, `settings`, plus a `GET /api/health`. Routers are deliberately thin: validate → prepared statement → JSON. `PUT` handlers build partial updates from an explicit allow-list of columns rather than spreading the body.
+- If `client/dist` exists (override with `DIYSHED_CLIENT_DIST`), `app.js` serves it statically with a `*` SPA fallback that skips `/api/*`.
 
 ### Client (`client/`) — React 18 + Vite + react-router-dom v6
 
-- Routing is declared in [src/App.jsx](client/src/App.jsx); all pages render inside a shared `<Layout>`. Pages: Home, ProjectForm (new/edit share one component), ProjectDetail, Inventory.
-- [src/api/client.js](client/src/api/client.js) is the only fetch layer — `get/post/put/del` helpers that throw `Error(data.error)` on non-2xx and return `null` for 204. Call these rather than `fetch` directly. Requests use relative `/api/...` paths (proxied in dev, same-origin in prod).
-- [vite.config.js](client/vite.config.js) sets the `/api` → `:3000` dev proxy and the Vitest jsdom config.
+- Routes are declared in `src/App.jsx`; every page renders inside `<Layout>`. Pages: Home (ranked list + effort/cost slider), ProjectForm (new and edit share one component), ProjectDetail, Inventory, Setup (first-run AI wizard), Settings.
+- `src/api/client.js` is the **only** fetch layer: generic `get/post/put/del` that throw `Error(data.error)` on non-2xx and return `null` for 204, plus named helpers for specific endpoints. Add new endpoints as named helpers here; never call `fetch` from a component.
+- No state library and no CSS framework — component state plus hand-written CSS in `src/index.css`. Pages that wait on background work (research) poll on a 4s interval while status is `researching`.
 
-### Shared conventions
+### Research (`server/src/research/`) — provider-neutral
 
-- **Enums are duplicated intentionally**: [server/src/util/validate.js](server/src/util/validate.js) holds bare arrays for validation; [client/src/constants.js](client/src/constants.js) holds `{value, label}` objects plus `labelFor()` for display. When you add/change an enum value, update **both** and the `CHECK` constraint in [schema.js](server/src/db/schema.js).
-- **Name normalization**: item names get a `normalized_name` via [server/src/util/normalize.js](server/src/util/normalize.js) (trim, lowercase, collapse whitespace) on insert/update — this is the basis for the future fuzzy inventory-matching (FR3.4). Keep it populated on any write to `project_items` / `inventory`.
-- Every route/page/util has a colocated `*.test.js(x)` next to it; add tests in the same place.
+This is the most load-bearing abstraction in the repo.
 
-## Domain model notes (from requirements.md)
+- `runner.js` owns the whole lifecycle and knows nothing about any specific CLI: build the prompt (`prompt.js`) → resolve the selected provider → `provider.run(prompt)` → validate the returned JSON (`schema.js`) → persist in one transaction. On failure it retries **once**, then sets `status='research_failed'` with `research_error`.
+- `providers/` holds the registry and the implementations. A provider is a plain object `{ id, label, resolveBin, isAvailable, run }`; `run` returns `{ ok: true, json }` or `{ ok: false, error }` and **never throws**. `contract.js` documents the shape; `contract.shared.js` is a **shared test suite every provider must pass** — a new or changed provider behaviour belongs there, not duplicated per provider.
+- Two providers exist: `claude.js` and `gemini.js`. Anything that changes what research produces belongs in the provider-neutral layer (`prompt.js`, `schema.js`, `runner.js`) so both providers get it. **Adding behaviour to one provider only is a defect.**
+- **No silent default provider.** The choice is stored in `settings.ai_provider`; unset means "not configured", and research fails fast rather than guessing. `selection.js` reads/writes it; `health.js` reports the selection plus per-provider availability.
+- Research runs through a small concurrency-capped queue (`queue.js`), fire-and-forget from the route, so `POST /api/projects/:id/research` returns `202` immediately and the client polls.
 
-- **Priority uses a divisor, not a multiplier**, in the ranking formula: `final_score = base_score / priority_weight`, lower ranks higher (weights: Urgent Fix `1.0`, Highly Desired `0.75`, Slightly Desired `0.3`, Dreams `0.05`). This is deliberate — see FR5.4.
-- The effort/cost weight is a **single slider**: only `w_effort` is meaningful; `w_cost = 1 − w_effort`.
-- **Tools vs materials differ at completion**: tools are reusable (offer to add to inventory when a project is Done), materials are consumed (never auto-suggested). See FR7.
-- Claude research (M2) will spawn `claude -p ... --allowedTools WebSearch,WebFetch --output-format json` as a child process — **no filesystem/shell tools granted**, schema-validated response, one retry then `research_failed`. It must degrade gracefully when the CLI is absent.
-- Research is now **provider-pluggable** (M6): the runner selects a provider (Claude or free Gemini) behind a common interface in [server/src/research/providers/](server/src/research/providers/). There is **no silent default** — the provider is stored in `settings.ai_provider` and chosen via the first-run wizard / Settings screen.
+## Invariants worth knowing before you change anything
+
+- **Research replaces only what research created.** The persist transaction deletes `project_items WHERE source='research'` and all `guides` for the project, then reinserts. Rows with `source='manual'` and any user-set `inventory_id` survive a re-run. Preserving user-authored data across re-runs is a deliberate product rule, not an accident — hold that line for anything new that research produces.
+- **Enums live in three places** and must be changed together: the SQL `CHECK` constraint in `schema.js`, the bare arrays in `server/src/util/validate.js`, and the `{value, label}` lists in `client/src/constants.js` (with `labelFor()` for display).
+- **Project statuses** are `researching`, `ready`, `in_progress`, `done`, `research_failed`. `in_progress` is defined in the schema, the validators, and the UI labels, but nothing in the app currently transitions a project into it — today it is only reachable via `PUT /api/projects/:id`.
+- **Tools and materials differ at completion.** `GET /api/projects/:id/completion-review` returns only *unowned tools*; `POST /api/projects/:id/complete` takes `add_item_ids`, adds those tools to inventory via `util/ownership.js`, and sets `status='done'` — all in one transaction. Materials are consumed and must never be auto-suggested for inventory. Route completion through this existing flow rather than re-implementing it.
+- **Ownership** is either an explicit `inventory_id` link or a fuzzy token-subset match on `normalized_name` (`util/match.js`); `match_override='ignore'` suppresses matching. Always populate `normalized_name` (`util/normalize.js`) on any write to `project_items` or `inventory`.
+- **Ranking**: `final_score = base_score / priority_weight`, sorted **ascending** — a divisor, not a multiplier. The effort/cost weighting is a single slider: only `w_effort` is stored; `w_cost = 1 - w_effort`.
+
+## Tests
+
+- Vitest everywhere. Unit tests are **colocated** next to the module (`foo.js` → `foo.test.js`); route/integration tests using supertest live in `server/test/`. Client tests use jsdom + Testing Library and assert user-visible behaviour, not implementation details.
+- Server integration tests set `process.env.DIYSHED_DB` to a temp file *before* importing `app.js` — copy that pattern from any file in `server/test/`.
+- Baseline on a clean checkout: server 173 tests / 22 files, client 63 tests / 12 files, all passing; `npm run build` succeeds.
+
+## Electron
+
+`electron/main.js` imports `server/src/server.js` **in-process** on a random port and points the window at it, setting `DIYSHED_DB` to the per-user `userData` dir and `DIYSHED_CLIENT_DIST` into `app.asar`. Consequences: don't assume repo-root-relative paths at runtime, don't spawn a second server, and remember native modules need `electron-rebuild`.
 
 ## Design
 
-The home screen visual design is fixed by an interactive mockup: [design/home-concepts.html](design/home-concepts.html) (chosen direction: **1a "Workshop Ledger"**), documented in [design/README.md](design/README.md). Type: Bitter (headings) / Karla (body); warm-cream + dark-brown + amber/rust OKLCH palette. Match this when building UI.
+The home screen visual language is fixed by [design/home-concepts.html](design/home-concepts.html) (direction 1a, "Workshop Ledger"), documented in [design/README.md](design/README.md): Bitter headings / Karla body, warm-cream + dark-brown + amber/rust OKLCH palette. Match the existing CSS in `client/src/index.css` rather than introducing a new styling approach.
