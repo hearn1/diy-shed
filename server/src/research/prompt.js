@@ -19,6 +19,7 @@ Respond with a SINGLE JSON object and NOTHING else — no prose, no explanation,
 - "guides": array of 3 to 5 objects, each with "title" (string), "url" (a valid http or https link to a guide), and "summary" (string).
 - "tools": array of objects, each with "name" (string) and "est_cost" (approximate cost in US dollars as a number, or null if unknown). Tools are reusable.
 - "materials": array of objects, each with "name" (string) and "est_cost" (US dollars as a number, or null). Materials are consumed by the project.
+- "steps": array of strings — an ordered, step-by-step checklist for actually doing the project, in the order they should be performed (e.g. "Turn off the water supply at the shutoff valve", "Remove the old faucet with a basin wrench"). Each entry is one discrete action.
 
 Return only the JSON object.`;
 }

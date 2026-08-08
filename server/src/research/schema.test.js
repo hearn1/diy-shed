@@ -13,7 +13,8 @@ function validPayload() {
     materials: [
       { name: 'Plywood', est_cost: 40 },
       { name: 'Screws', est_cost: null }
-    ]
+    ],
+    steps: [' Frame the walls ', 'Sheathe the roof']
   };
 }
 
@@ -33,6 +34,31 @@ describe('validateResearchResult', () => {
       { name: 'Plywood', est_cost: 40 },
       { name: 'Screws', est_cost: null }
     ]);
+    expect(res.value.steps).toEqual(['Frame the walls', 'Sheathe the roof']);
+  });
+
+  it('defaults steps to an empty array when the provider omits them', () => {
+    const payload = validPayload();
+    delete payload.steps;
+    const res = validateResearchResult(payload);
+    expect(res.ok).toBe(true);
+    expect(res.value.steps).toEqual([]);
+  });
+
+  it('rejects a non-empty-string entry in steps', () => {
+    const payload = validPayload();
+    payload.steps = ['Do the thing', '  '];
+    const res = validateResearchResult(payload);
+    expect(res.ok).toBe(false);
+    expect(res.errors.some((e) => e.includes('steps'))).toBe(true);
+  });
+
+  it('rejects steps that is not an array', () => {
+    const payload = validPayload();
+    payload.steps = 'do it';
+    const res = validateResearchResult(payload);
+    expect(res.ok).toBe(false);
+    expect(res.errors.some((e) => e.includes('steps'))).toBe(true);
   });
 
   it('drops unknown fields from the normalized value', () => {

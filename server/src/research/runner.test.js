@@ -14,7 +14,7 @@ function makeProject(name = 'Build a shed', description = 'in the yard') {
   return info.lastInsertRowid;
 }
 
-function validResult() {
+function validResult(overrides = {}) {
   return {
     ok: true,
     json: {
@@ -22,9 +22,21 @@ function validResult() {
       effort: { level: 'Medium', hours: 12, skill: 'Intermediate' },
       guides: [{ title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }],
       tools: [{ name: 'Circular Saw', est_cost: 120 }],
-      materials: [{ name: 'Plywood', est_cost: 40 }]
+      materials: [{ name: 'Plywood', est_cost: 40 }],
+      steps: ['Frame the walls', 'Sheathe the roof'],
+      ...overrides
     }
   };
+}
+
+function stepRows(id) {
+  return db.prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY position, id').all(id);
+}
+
+function insertStep(id, { text, done = 0, source = 'manual', position }) {
+  db.prepare(
+    'INSERT INTO execution_steps (project_id, text, done, source, position) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, text, done ? 1 : 0, source, position);
 }
 
 function provider(id, run) {
@@ -72,6 +84,13 @@ describe('researchProject', () => {
       ['Plywood', 'material', 'research']
     ]);
     expect(items[0].normalized_name).toBe('circular saw');
+
+    const steps = stepRows(id);
+    expect(steps.map((s) => [s.text, s.done, s.source])).toEqual([
+      ['Frame the walls', 0, 'research'],
+      ['Sheathe the roof', 0, 'research']
+    ]);
+    expect(steps.map((s) => s.position)).toEqual([0, 1]);
   });
 
   it('records research_provider from the stored selection when no provider is injected', async () => {
@@ -196,5 +215,74 @@ describe('researchProject', () => {
     expect(project.research_summary).toBeNull();
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+  });
+
+  describe('execution step re-run preservation', () => {
+    it('keeps manual steps, keeps completed AI steps, and replaces incomplete untouched AI steps', async () => {
+      const id = makeProject();
+      insertStep(id, { text: 'My own prep step', done: 0, source: 'manual', position: 0 });
+      insertStep(id, { text: 'Old completed AI step', done: 1, source: 'research', position: 1 });
+      insertStep(id, { text: 'Old incomplete AI step', done: 0, source: 'research', position: 2 });
+      insertStep(id, { text: 'Edited AI step (now manual)', done: 0, source: 'manual', position: 3 });
+
+      const p = provider('claude', async () =>
+        validResult({ steps: ['New step one', 'New step two'] })
+      );
+      const status = await researchProject(id, { db, provider: p });
+      expect(status).toBe('ready');
+
+      const steps = stepRows(id);
+      expect(steps.map((s) => [s.text, s.done, s.source])).toEqual([
+        ['My own prep step', 0, 'manual'],
+        ['Old completed AI step', 1, 'research'],
+        ['Edited AI step (now manual)', 0, 'manual'],
+        ['New step one', 0, 'research'],
+        ['New step two', 0, 'research']
+      ]);
+      // Kept steps are renumbered contiguously, preserving their relative order.
+      expect(steps.map((s) => s.position)).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it('appends freshly researched steps when there is nothing to keep', async () => {
+      const id = makeProject();
+      const p = provider('claude', async () => validResult({ steps: ['Only step'] }));
+      await researchProject(id, { db, provider: p });
+      expect(stepRows(id).map((s) => [s.text, s.source])).toEqual([['Only step', 'research']]);
+    });
+
+    it('leaves the checklist byte-for-byte unchanged when a re-run fails', async () => {
+      const id = makeProject();
+      const p = provider('claude', async () => validResult());
+      await researchProject(id, { db, provider: p });
+      const before = stepRows(id);
+
+      const failing = provider('claude', async () => ({ ok: false, error: 'boom' }));
+      const status = await researchProject(id, { db, provider: failing });
+      expect(status).toBe('research_failed');
+
+      expect(stepRows(id)).toEqual(before);
+    });
+
+    it('leaves the checklist unchanged when the mid-write transaction rolls back', async () => {
+      const id = makeProject();
+      const p = provider('claude', async () => validResult());
+      await researchProject(id, { db, provider: p });
+      const before = stepRows(id);
+
+      const wrapped = {
+        prepare: (sql) =>
+          sql.includes('INSERT INTO guides')
+            ? {
+                run: () => {
+                  throw new Error('disk full');
+                }
+              }
+            : db.prepare(sql),
+        transaction: (fn) => db.transaction(fn)
+      };
+      const status = await researchProject(id, { db: wrapped, provider: p });
+      expect(status).toBe('research_failed');
+      expect(stepRows(id)).toEqual(before);
+    });
   });
 });

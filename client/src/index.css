@@ -406,6 +406,16 @@ tr.researching {
   color: oklch(48% 0.12 40);
 }
 
+.item-badge.source-ai {
+  background: oklch(90% 0.03 260);
+  color: oklch(42% 0.09 260);
+}
+
+.item-badge.source-manual {
+  background: oklch(90% 0.02 75);
+  color: oklch(42% 0.03 75);
+}
+
 /* AI provider setup / settings */
 .setup {
   max-width: 640px;

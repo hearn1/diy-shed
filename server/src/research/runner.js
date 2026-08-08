@@ -36,6 +36,34 @@ async function resolveProvider(db, deps) {
   return { ok: true, provider };
 }
 
+// Re-run preservation rules: steps the user added or edited (source='manual')
+// and completed AI steps (source='research', done) are kept, in their prior
+// relative order, renumbered to be contiguous. Incomplete, untouched AI steps
+// are dropped. Newly researched steps are appended after the kept ones as
+// fresh, incomplete, source='research' rows. Runs inside the caller's
+// transaction, so a failure anywhere in persist() leaves the checklist
+// untouched.
+function mergeExecutionSteps(db, projectId, newSteps) {
+  const existing = db
+    .prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY position, id')
+    .all(projectId);
+  const kept = existing.filter((s) => s.source === 'manual' || s.done);
+  const toRemove = existing.filter((s) => s.source === 'research' && !s.done);
+
+  if (toRemove.length) {
+    const placeholders = toRemove.map(() => '?').join(',');
+    db.prepare(`DELETE FROM execution_steps WHERE id IN (${placeholders})`).run(...toRemove.map((s) => s.id));
+  }
+
+  const renumber = db.prepare('UPDATE execution_steps SET position = ? WHERE id = ?');
+  kept.forEach((s, i) => renumber.run(i, s.id));
+
+  const insertStep = db.prepare(
+    "INSERT INTO execution_steps (project_id, text, done, source, position) VALUES (?, ?, 0, 'research', ?)"
+  );
+  newSteps.forEach((text, i) => insertStep.run(projectId, text, kept.length + i));
+}
+
 function fail(db, projectId, error) {
   db.prepare("UPDATE projects SET status = 'research_failed', research_error = ? WHERE id = ?").run(error, projectId);
   return 'research_failed';
@@ -62,7 +90,7 @@ export async function researchProject(projectId, deps = {}) {
 
   if (!result.ok) return fail(db, projectId, result.error);
 
-  const { summary, effort, guides, tools, materials } = result.value;
+  const { summary, effort, guides, tools, materials, steps } = result.value;
   const persist = db.transaction(() => {
     db.prepare(
       `UPDATE projects
@@ -87,6 +115,8 @@ export async function researchProject(projectId, deps = {}) {
     );
     for (const t of tools) insertItem.run(projectId, t.name, normalizeName(t.name), 'tool', t.est_cost);
     for (const m of materials) insertItem.run(projectId, m.name, normalizeName(m.name), 'material', m.est_cost);
+
+    mergeExecutionSteps(db, projectId, steps);
   });
 
   try {
