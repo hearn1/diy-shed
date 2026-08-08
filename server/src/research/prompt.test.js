@@ -11,7 +11,7 @@ describe('buildResearchPrompt', () => {
   it('names the JSON schema keys and asks for a single JSON object', () => {
     const prompt = buildResearchPrompt({ name: 'x', description: 'y' });
     expect(prompt).toMatch(/JSON/);
-    for (const key of ['summary', 'effort', 'guides', 'tools', 'materials']) {
+    for (const key of ['summary', 'effort', 'guides', 'tools', 'materials', 'steps']) {
       expect(prompt).toContain(`"${key}"`);
     }
     expect(prompt).toMatch(/"Low"/);

@@ -4,6 +4,7 @@ import { getSelectedProviderId } from './selection.js';
 import { buildResearchPrompt } from './prompt.js';
 import { validateResearchResult } from './schema.js';
 import { normalizeName } from '../util/normalize.js';
+import { mergeStepsForRerun } from './steps.js';
 
 async function attempt(project, provider) {
   const prompt = buildResearchPrompt({ name: project.name, description: project.description });
@@ -41,6 +42,29 @@ function fail(db, projectId, error) {
   return 'research_failed';
 }
 
+// Applies the rerun preservation rules from steps.js: manual steps and
+// completed research steps are kept (and renumbered to stay contiguous and in
+// their relative order), untouched incomplete research steps are deleted, and
+// the newly researched steps are appended after them.
+function persistSteps(db, projectId, newStepTexts) {
+  const existing = db
+    .prepare('SELECT id, done, source FROM project_steps WHERE project_id = ? ORDER BY position, id')
+    .all(projectId);
+  const { keptPlan, replacedIds, insertPlan } = mergeStepsForRerun(existing, newStepTexts);
+
+  if (replacedIds.length > 0) {
+    const placeholders = replacedIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM project_steps WHERE id IN (${placeholders})`).run(...replacedIds);
+  }
+  const repositionStep = db.prepare('UPDATE project_steps SET position = ? WHERE id = ?');
+  for (const { id, position } of keptPlan) repositionStep.run(position, id);
+
+  const insertStep = db.prepare(
+    "INSERT INTO project_steps (project_id, text, done, source, position) VALUES (?,?,0,'research',?)"
+  );
+  for (const { text, position } of insertPlan) insertStep.run(projectId, text, position);
+}
+
 // Research replaces only research-sourced rows: it deletes and reinserts
 // project_items with source='research' and all guides for the project. Rows the
 // user added manually (source='manual') and any inventory_id links are left
@@ -62,7 +86,7 @@ export async function researchProject(projectId, deps = {}) {
 
   if (!result.ok) return fail(db, projectId, result.error);
 
-  const { summary, effort, guides, tools, materials } = result.value;
+  const { summary, effort, guides, tools, materials, steps } = result.value;
   const persist = db.transaction(() => {
     db.prepare(
       `UPDATE projects
@@ -87,6 +111,8 @@ export async function researchProject(projectId, deps = {}) {
     );
     for (const t of tools) insertItem.run(projectId, t.name, normalizeName(t.name), 'tool', t.est_cost);
     for (const m of materials) insertItem.run(projectId, m.name, normalizeName(m.name), 'material', m.est_cost);
+
+    persistSteps(db, projectId, steps);
   });
 
   try {

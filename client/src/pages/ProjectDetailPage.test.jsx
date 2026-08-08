@@ -48,6 +48,7 @@ beforeEach(() => {
       ]);
     return Promise.resolve([]);
   });
+  api.getSteps.mockResolvedValue([]);
 });
 
 describe('ProjectDetailPage', () => {
@@ -265,5 +266,115 @@ describe('ProjectDetailPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Build a shed' });
     expect(screen.getByText(/Research failed: timeout/i)).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetailPage execution steps', () => {
+  const stepsFixture = [
+    { id: 1, project_id: 1, text: 'Mark out the frame', done: 1, source: 'research', position: 0 },
+    { id: 2, project_id: 1, text: 'Cut the lumber', done: 0, source: 'research', position: 1 },
+    { id: 3, project_id: 1, text: 'Buy extra screws', done: 0, source: 'manual', position: 2 }
+  ];
+
+  beforeEach(() => {
+    api.getSteps.mockResolvedValue(stepsFixture);
+  });
+
+  it('renders steps in order with progress and AI/You badges', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    expect(await screen.findByText('1 of 3 steps done')).toBeInTheDocument();
+    const items = screen.getAllByText(/Mark out the frame|Cut the lumber|Buy extra screws/);
+    expect(items.map((el) => el.textContent)).toEqual(['Mark out the frame', 'Cut the lumber', 'Buy extra screws']);
+
+    const first = screen.getByText('Mark out the frame').closest('li');
+    expect(within(first).getByText('AI')).toBeInTheDocument();
+    const third = screen.getByText('Buy extra screws').closest('li');
+    expect(within(third).getByText('You')).toBeInTheDocument();
+  });
+
+  it('adds a manual step via the form', async () => {
+    api.addStep.mockResolvedValue({ id: 4, text: 'Sand the edges', done: 0, source: 'manual', position: 3 });
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    fireEvent.change(screen.getByLabelText('Step text'), { target: { value: 'Sand the edges' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
+
+    await waitFor(() => expect(api.addStep).toHaveBeenCalledWith('1', 'Sand the edges'));
+  });
+
+  it('edits a step and saves the new text', async () => {
+    api.updateStep.mockResolvedValue({ ...stepsFixture[1], text: 'Cut lumber to size' });
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    const li = screen.getByText('Cut the lumber').closest('li');
+    fireEvent.click(within(li).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Step text'), { target: { value: 'Cut lumber to size' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save step' }));
+
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 2, { text: 'Cut lumber to size' }));
+  });
+
+  it('checks and unchecks a step', async () => {
+    api.updateStep.mockResolvedValue({});
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    const li = screen.getByText('Cut the lumber').closest('li');
+    fireEvent.click(within(li).getByRole('checkbox'));
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 2, { done: true }));
+
+    const done = screen.getByText('Mark out the frame').closest('li');
+    fireEvent.click(within(done).getByRole('checkbox'));
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 1, { done: false }));
+  });
+
+  it('deletes a step after confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    api.deleteStep.mockResolvedValue(null);
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    const li = screen.getByText('Buy extra screws').closest('li');
+    fireEvent.click(within(li).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(api.deleteStep).toHaveBeenCalledWith('1', 3));
+  });
+
+  it('moves a step up and reflects the returned order', async () => {
+    const reordered = [stepsFixture[1], stepsFixture[0], stepsFixture[2]];
+    api.moveStep.mockResolvedValue(reordered);
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    const li = screen.getByText('Cut the lumber').closest('li');
+    fireEvent.click(within(li).getByRole('button', { name: 'Move step up' }));
+
+    await waitFor(() => expect(api.moveStep).toHaveBeenCalledWith('1', 2, 'up'));
+    const texts = await screen.findAllByText(/Mark out the frame|Cut the lumber|Buy extra screws/);
+    expect(texts.map((el) => el.textContent)).toEqual(['Cut the lumber', 'Mark out the frame', 'Buy extra screws']);
+  });
+
+  it('shows a Start project button only when the project is ready, and starts it', async () => {
+    api.startProject.mockResolvedValue({ status: 'in_progress' });
+    renderPage();
+    await screen.findByText('1 of 3 steps done');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start project' }));
+    await waitFor(() => expect(api.startProject).toHaveBeenCalledWith('1'));
+    await waitFor(() => expect(screen.getByText(/Status: In Progress/)).toBeInTheDocument());
+  });
+
+  it('does not show a Start project button once the project is in progress', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'in_progress' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
   });
 });
