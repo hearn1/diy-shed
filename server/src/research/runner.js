@@ -4,6 +4,7 @@ import { getSelectedProviderId } from './selection.js';
 import { buildResearchPrompt } from './prompt.js';
 import { validateResearchResult } from './schema.js';
 import { normalizeName } from '../util/normalize.js';
+import { partitionStepsForRerun } from './mergeSteps.js';
 
 async function attempt(project, provider) {
   const prompt = buildResearchPrompt({ name: project.name, description: project.description });
@@ -44,7 +45,9 @@ function fail(db, projectId, error) {
 // Research replaces only research-sourced rows: it deletes and reinserts
 // project_items with source='research' and all guides for the project. Rows the
 // user added manually (source='manual') and any inventory_id links are left
-// untouched.
+// untouched. Execution steps follow the same idea but keep more: a research
+// step also survives a re-run once the user has checked it off, not only once
+// they've edited it into a manual one (see mergeSteps.js).
 export async function researchProject(projectId, deps = {}) {
   const db = deps.db || defaultDb;
 
@@ -62,7 +65,7 @@ export async function researchProject(projectId, deps = {}) {
 
   if (!result.ok) return fail(db, projectId, result.error);
 
-  const { summary, effort, guides, tools, materials } = result.value;
+  const { summary, effort, guides, tools, materials, steps } = result.value;
   const persist = db.transaction(() => {
     db.prepare(
       `UPDATE projects
@@ -87,6 +90,19 @@ export async function researchProject(projectId, deps = {}) {
     );
     for (const t of tools) insertItem.run(projectId, t.name, normalizeName(t.name), 'tool', t.est_cost);
     for (const m of materials) insertItem.run(projectId, m.name, normalizeName(m.name), 'material', m.est_cost);
+
+    const existingSteps = db
+      .prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position, id')
+      .all(projectId);
+    const { keep, remove } = partitionStepsForRerun(existingSteps);
+    const deleteStep = db.prepare('DELETE FROM project_steps WHERE id = ?');
+    for (const s of remove) deleteStep.run(s.id);
+    const repositionStep = db.prepare('UPDATE project_steps SET position = ? WHERE id = ?');
+    keep.forEach((s, i) => repositionStep.run(i, s.id));
+    const insertStep = db.prepare(
+      "INSERT INTO project_steps (project_id, text, done, source, position) VALUES (?, ?, 0, 'research', ?)"
+    );
+    steps.forEach((text, i) => insertStep.run(projectId, text, keep.length + i));
   });
 
   try {

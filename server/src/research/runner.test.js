@@ -22,7 +22,8 @@ function validResult() {
       effort: { level: 'Medium', hours: 12, skill: 'Intermediate' },
       guides: [{ title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }],
       tools: [{ name: 'Circular Saw', est_cost: 120 }],
-      materials: [{ name: 'Plywood', est_cost: 40 }]
+      materials: [{ name: 'Plywood', est_cost: 40 }],
+      steps: ['Lay the foundation', 'Frame the walls']
     }
   };
 }
@@ -72,6 +73,12 @@ describe('researchProject', () => {
       ['Plywood', 'material', 'research']
     ]);
     expect(items[0].normalized_name).toBe('circular saw');
+
+    const steps = db.prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position').all(id);
+    expect(steps.map((s) => [s.text, s.done, s.source, s.position])).toEqual([
+      ['Lay the foundation', 0, 'research', 0],
+      ['Frame the walls', 0, 'research', 1]
+    ]);
   });
 
   it('records research_provider from the stored selection when no provider is injected', async () => {
@@ -109,6 +116,46 @@ describe('researchProject', () => {
 
     const guides = db.prepare('SELECT * FROM guides WHERE project_id = ?').all(id);
     expect(guides).toHaveLength(1);
+  });
+
+  it('re-run keeps manual, completed and edited-to-manual steps but replaces incomplete untouched ones', async () => {
+    const id = makeProject();
+    const insertStep = db.prepare(
+      "INSERT INTO project_steps (project_id, text, done, source, position) VALUES (?,?,?,?,?)"
+    );
+    insertStep.run(id, 'Buy permit', 0, 'manual', 0);
+    insertStep.run(id, 'Old AI step, untouched', 0, 'research', 1);
+    insertStep.run(id, 'Old AI step, completed', 1, 'research', 2);
+    insertStep.run(id, 'Old AI step, edited by user', 0, 'manual', 3);
+
+    const status = await researchProject(id, { db, provider: provider('claude', async () => validResult()) });
+    expect(status).toBe('ready');
+
+    const steps = db.prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position').all(id);
+    expect(steps.map((s) => [s.text, s.done, s.source])).toEqual([
+      ['Buy permit', 0, 'manual'],
+      ['Old AI step, completed', 1, 'research'],
+      ['Old AI step, edited by user', 0, 'manual'],
+      ['Lay the foundation', 0, 'research'],
+      ['Frame the walls', 0, 'research']
+    ]);
+  });
+
+  it('leaves the checklist byte-for-byte unchanged when a re-run fails', async () => {
+    const id = makeProject();
+    const insertStep = db.prepare(
+      "INSERT INTO project_steps (project_id, text, done, source, position) VALUES (?,?,?,?,?)"
+    );
+    insertStep.run(id, 'Buy permit', 0, 'manual', 0);
+    insertStep.run(id, 'Old AI step', 0, 'research', 1);
+    const before = db.prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position').all(id);
+
+    const p = provider('claude', async () => ({ ok: false, error: 'timeout' }));
+    const status = await researchProject(id, { db, provider: p });
+    expect(status).toBe('research_failed');
+
+    const after = db.prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position').all(id);
+    expect(after).toEqual(before);
   });
 
   it('fails with a "no provider configured" error when nothing is selected', async () => {
@@ -170,6 +217,7 @@ describe('researchProject', () => {
     expect(status).toBe('research_failed');
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM project_steps WHERE project_id = ?').get(id).c).toBe(0);
   });
 
   it('rolls back the whole transaction on a mid-write error', async () => {
@@ -196,5 +244,6 @@ describe('researchProject', () => {
     expect(project.research_summary).toBeNull();
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM project_steps WHERE project_id = ?').get(id).c).toBe(0);
   });
 });

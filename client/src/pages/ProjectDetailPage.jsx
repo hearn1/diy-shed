@@ -9,7 +9,13 @@ import {
   markItemOwned,
   unlinkItem,
   getCompletionReview,
-  completeProject
+  completeProject,
+  startProject,
+  getSteps,
+  addStep as apiAddStep,
+  updateStep as apiUpdateStep,
+  deleteStep as apiDeleteStep,
+  moveStep as apiMoveStep
 } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 import { looksLikeProviderError } from '../providerMeta.js';
@@ -30,10 +36,20 @@ export default function ProjectDetailPage() {
   const [effort, setEffort] = useState({ effort_level: '', effort_hours: '', skill_level: '' });
   const [completionTools, setCompletionTools] = useState(null);
   const [checkedTools, setCheckedTools] = useState({});
+  const [steps, setSteps] = useState([]);
+  const [stepText, setStepText] = useState('');
+  const [editingStepId, setEditingStepId] = useState(null);
+  const [editingStepText, setEditingStepText] = useState('');
 
   function loadItems() {
     get(`/api/projects/${id}/items`)
       .then(setItems)
+      .catch((err) => setError(err.message));
+  }
+
+  function loadSteps() {
+    getSteps(id)
+      .then(setSteps)
       .catch((err) => setError(err.message));
   }
 
@@ -47,6 +63,7 @@ export default function ProjectDetailPage() {
           skill_level: p.skill_level ?? ''
         });
         loadItems();
+        loadSteps();
       })
       .catch((err) => {
         if (err.message.toLowerCase().includes('not found')) setNotFound(true);
@@ -188,11 +205,95 @@ export default function ProjectDetailPage() {
   }
 
   async function handleRerun() {
-    if (!window.confirm('Re-run research? This replaces the current research results.')) return;
+    if (
+      !window.confirm(
+        'Re-run research? This replaces the guides, tools and materials from the last run. In your checklist, ' +
+          'steps you added or edited and any steps you already checked off are kept — incomplete AI-generated ' +
+          'steps you have not touched will be replaced with the new results.'
+      )
+    )
+      return;
     setError('');
     try {
       await rerunResearch(id);
       loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleStart() {
+    setError('');
+    try {
+      await startProject(id);
+      loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function submitStep(e) {
+    e.preventDefault();
+    if (!stepText.trim()) return;
+    setError('');
+    try {
+      await apiAddStep(id, stepText);
+      setStepText('');
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function startEditStep(step) {
+    setEditingStepId(step.id);
+    setEditingStepText(step.text);
+  }
+
+  function cancelEditStep() {
+    setEditingStepId(null);
+    setEditingStepText('');
+  }
+
+  async function saveEditStep(step) {
+    if (!editingStepText.trim()) return;
+    setError('');
+    try {
+      await apiUpdateStep(id, step.id, { text: editingStepText });
+      cancelEditStep();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function toggleStepDone(step) {
+    setError('');
+    try {
+      await apiUpdateStep(id, step.id, { done: !step.done });
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function deleteStepHandler(step) {
+    if (!window.confirm(`Remove "${step.text}"?`)) return;
+    setError('');
+    try {
+      await apiDeleteStep(id, step.id);
+      if (editingStepId === step.id) cancelEditStep();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function moveStepHandler(step, direction) {
+    setError('');
+    try {
+      const updated = await apiMoveStep(id, step.id, direction);
+      setSteps(updated);
     } catch (err) {
       setError(err.message);
     }
@@ -222,6 +323,7 @@ export default function ProjectDetailPage() {
     <section>
       <div className="actions">
         <h2>{project.name}</h2>
+        {project.status === 'ready' && <button onClick={handleStart}>Start project</button>}
         {project.status !== 'done' && <button onClick={startCompletion}>Mark as done</button>}
         <Link to={`/projects/${id}/edit`}>Edit</Link>
       </div>
@@ -304,6 +406,84 @@ export default function ProjectDetailPage() {
           )}
         </>
       )}
+
+      <h3>Checklist</h3>
+      {steps.length > 0 && (
+        <p className="cost-summary">
+          {steps.filter((s) => s.done).length} of {steps.length} step{steps.length === 1 ? '' : 's'} done
+        </p>
+      )}
+      {steps.length === 0 ? (
+        <p className="empty">No steps yet. Add one below, or re-run research to generate a checklist.</p>
+      ) : (
+        <ol className="step-list">
+          {steps.map((step, i) => (
+            <li key={step.id} className={step.done ? 'step-done' : ''}>
+              <input
+                type="checkbox"
+                checked={step.done}
+                disabled={project.status === 'done'}
+                onChange={() => toggleStepDone(step)}
+                aria-label={`Mark "${step.text}" done`}
+              />
+              <span className={`step-badge ${step.source === 'research' ? 'ai' : 'manual'}`}>
+                {step.source === 'research' ? 'AI' : 'You'}
+              </span>
+              {editingStepId === step.id ? (
+                <>
+                  <input
+                    value={editingStepText}
+                    onChange={(e) => setEditingStepText(e.target.value)}
+                    aria-label="Edit step text"
+                  />
+                  <span className="actions">
+                    <button type="button" onClick={() => saveEditStep(step)}>
+                      Save
+                    </button>
+                    <button type="button" onClick={cancelEditStep}>
+                      Cancel
+                    </button>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="step-text">{step.text}</span>
+                  <span className="actions">
+                    <button type="button" onClick={() => moveStepHandler(step, 'up')} disabled={i === 0} aria-label="Move up">
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveStepHandler(step, 'down')}
+                      disabled={i === steps.length - 1}
+                      aria-label="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button type="button" onClick={() => startEditStep(step)}>
+                      Edit
+                    </button>
+                    <button type="button" className="danger" onClick={() => deleteStepHandler(step)}>
+                      Delete
+                    </button>
+                  </span>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      <form onSubmit={submitStep}>
+        <label>
+          New step
+          <input value={stepText} onChange={(e) => setStepText(e.target.value)} />
+        </label>
+        <div className="actions">
+          <button type="submit" className="primary">
+            Add step
+          </button>
+        </div>
+      </form>
 
       <h3>Tools &amp; Materials</h3>
       {project.gap && (

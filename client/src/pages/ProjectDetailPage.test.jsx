@@ -48,6 +48,7 @@ beforeEach(() => {
       ]);
     return Promise.resolve([]);
   });
+  api.getSteps.mockResolvedValue([]);
 });
 
 describe('ProjectDetailPage', () => {
@@ -265,5 +266,130 @@ describe('ProjectDetailPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Build a shed' });
     expect(screen.getByText(/Research failed: timeout/i)).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetailPage execution checklist', () => {
+  const steps = [
+    { id: 1, text: 'Lay the foundation', done: true, source: 'research', position: 0 },
+    { id: 2, text: 'Frame the walls', done: false, source: 'research', position: 1 },
+    { id: 3, text: 'Buy a permit', done: false, source: 'manual', position: 2 }
+  ];
+
+  it('renders steps in order with progress and AI/You badges', async () => {
+    api.getSteps.mockResolvedValue(steps);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    expect(screen.getByText('1 of 3 steps done')).toBeInTheDocument();
+    const rows = screen.getByText('Lay the foundation').closest('li').parentElement.children;
+    expect(rows[0]).toHaveTextContent('Lay the foundation');
+    expect(rows[1]).toHaveTextContent('Frame the walls');
+    expect(rows[2]).toHaveTextContent('Buy a permit');
+
+    const aiStep = screen.getByText('Lay the foundation').closest('li');
+    expect(within(aiStep).getByText('AI')).toBeInTheDocument();
+    const manualStep = screen.getByText('Buy a permit').closest('li');
+    expect(within(manualStep).getByText('You')).toBeInTheDocument();
+  });
+
+  it('adds a manual step via the form', async () => {
+    api.getSteps.mockResolvedValue(steps);
+    api.addStep.mockResolvedValue({ id: 4, text: 'Seal the wood', done: false, source: 'manual', position: 3 });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.change(screen.getByLabelText('New step'), { target: { value: 'Seal the wood' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
+
+    await waitFor(() => expect(api.addStep).toHaveBeenCalledWith('1', 'Seal the wood'));
+    await waitFor(() => expect(api.getSteps).toHaveBeenCalledTimes(2));
+  });
+
+  it('checks a step done and calls the update endpoint with done:true', async () => {
+    api.getSteps.mockResolvedValue(steps);
+    api.updateStep.mockResolvedValue({ ...steps[1], done: true });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const row = screen.getByText('Frame the walls').closest('li');
+    fireEvent.click(within(row).getByRole('checkbox'));
+
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 2, { done: true }));
+  });
+
+  it('edits a step text, which persists after reload', async () => {
+    api.getSteps.mockResolvedValue(steps);
+    api.updateStep.mockResolvedValue({ ...steps[1], text: 'Frame all four walls' });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const row = screen.getByText('Frame the walls').closest('li');
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    const input = screen.getByLabelText('Edit step text');
+    fireEvent.change(input, { target: { value: 'Frame all four walls' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 2, { text: 'Frame all four walls' }));
+  });
+
+  it('deletes a step after confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    api.getSteps.mockResolvedValue(steps);
+    api.deleteStep.mockResolvedValue(null);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const row = screen.getByText('Buy a permit').closest('li');
+    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(api.deleteStep).toHaveBeenCalledWith('1', 3));
+  });
+
+  it('moves a step up and applies the reordered list returned by the API', async () => {
+    api.getSteps.mockResolvedValue(steps);
+    const reordered = [steps[0], steps[2], steps[1]];
+    api.moveStep.mockResolvedValue(reordered);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const row = screen.getByText('Buy a permit').closest('li');
+    fireEvent.click(within(row).getByRole('button', { name: 'Move up' }));
+
+    await waitFor(() => expect(api.moveStep).toHaveBeenCalledWith('1', 3, 'up'));
+    const orderedRows = screen.getByText('Lay the foundation').closest('li').parentElement.children;
+    expect(orderedRows[1]).toHaveTextContent('Buy a permit');
+  });
+
+  it('shows a Start project button for a ready project and calls the start endpoint', async () => {
+    api.startProject.mockResolvedValue({ ...project, status: 'in_progress' });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start project' }));
+    await waitFor(() => expect(api.startProject).toHaveBeenCalledWith('1'));
+  });
+
+  it('does not show a Start project button once the project is in progress', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'in_progress' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+  });
+
+  it('disables the checkbox once the project is done', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'done' });
+      return Promise.resolve([]);
+    });
+    api.getSteps.mockResolvedValue(steps);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const row = screen.getByText('Frame the walls').closest('li');
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
   });
 });

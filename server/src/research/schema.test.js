@@ -13,7 +13,8 @@ function validPayload() {
     materials: [
       { name: 'Plywood', est_cost: 40 },
       { name: 'Screws', est_cost: null }
-    ]
+    ],
+    steps: [' Cut the frame boards to length. ', 'Assemble the frame.']
   };
 }
 
@@ -33,6 +34,7 @@ describe('validateResearchResult', () => {
       { name: 'Plywood', est_cost: 40 },
       { name: 'Screws', est_cost: null }
     ]);
+    expect(res.value.steps).toEqual(['Cut the frame boards to length.', 'Assemble the frame.']);
   });
 
   it('drops unknown fields from the normalized value', () => {
@@ -54,7 +56,10 @@ describe('validateResearchResult', () => {
     ['negative tool cost', (p) => (p.tools[0].est_cost = -5)],
     ['tools not an array', (p) => (p.tools = 'saw')],
     ['materials not an array', (p) => (p.materials = null)],
-    ['nameless tool', (p) => (p.tools[0].name = '  ')]
+    ['nameless tool', (p) => (p.tools[0].name = '  ')],
+    ['steps not an array', (p) => (p.steps = 'do it')],
+    ['empty steps', (p) => (p.steps = [])],
+    ['blank step', (p) => (p.steps = ['  '])]
   ];
 
   for (const [label, mutate] of cases) {
