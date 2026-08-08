@@ -22,9 +22,14 @@ function validResult() {
       effort: { level: 'Medium', hours: 12, skill: 'Intermediate' },
       guides: [{ title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }],
       tools: [{ name: 'Circular Saw', est_cost: 120 }],
-      materials: [{ name: 'Plywood', est_cost: 40 }]
+      materials: [{ name: 'Plywood', est_cost: 40 }],
+      steps: ['Mark out the frame', 'Cut the lumber', 'Assemble the walls']
     }
   };
+}
+
+function getSteps(projectId) {
+  return db.prepare('SELECT * FROM project_steps WHERE project_id = ? ORDER BY position, id').all(projectId);
 }
 
 function provider(id, run) {
@@ -72,6 +77,13 @@ describe('researchProject', () => {
       ['Plywood', 'material', 'research']
     ]);
     expect(items[0].normalized_name).toBe('circular saw');
+
+    const steps = getSteps(id);
+    expect(steps.map((s) => [s.text, s.done, s.source, s.position])).toEqual([
+      ['Mark out the frame', 0, 'research', 0],
+      ['Cut the lumber', 0, 'research', 1],
+      ['Assemble the walls', 0, 'research', 2]
+    ]);
   });
 
   it('records research_provider from the stored selection when no provider is injected', async () => {
@@ -196,5 +208,74 @@ describe('researchProject', () => {
     expect(project.research_summary).toBeNull();
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+  });
+});
+
+describe('researchProject execution checklist rerun', () => {
+  function insertStep(projectId, { text, done, source, position }) {
+    db.prepare('INSERT INTO project_steps (project_id, text, done, source, position) VALUES (?,?,?,?,?)').run(
+      projectId,
+      text,
+      done ? 1 : 0,
+      source,
+      position
+    );
+  }
+
+  it('keeps manual, completed, and edited-to-manual steps on rerun; replaces incomplete untouched ones (scenario 7)', async () => {
+    const id = makeProject();
+    insertStep(id, { text: 'My own prep step', done: false, source: 'manual', position: 0 });
+    insertStep(id, { text: 'Mark out the frame', done: true, source: 'research', position: 1 });
+    insertStep(id, { text: 'Cut the lumber', done: false, source: 'research', position: 2 });
+    insertStep(id, { text: 'Assemble the walls (edited)', done: false, source: 'manual', position: 3 });
+
+    const p = provider('claude', async () => ({
+      ok: true,
+      json: {
+        ...validResult().json,
+        steps: ['Mark out the frame', 'Cut the lumber to size', 'Raise the frame', 'Add the roof']
+      }
+    }));
+    const status = await researchProject(id, { db, provider: p });
+    expect(status).toBe('ready');
+
+    const steps = getSteps(id);
+    expect(steps.map((s) => [s.text, !!s.done, s.source])).toEqual([
+      ['My own prep step', false, 'manual'],
+      ['Mark out the frame', true, 'research'],
+      ['Assemble the walls (edited)', false, 'manual'],
+      ['Mark out the frame', false, 'research'],
+      ['Cut the lumber to size', false, 'research'],
+      ['Raise the frame', false, 'research'],
+      ['Add the roof', false, 'research']
+    ]);
+    expect(steps.map((s) => s.position)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('leaves the checklist byte-for-byte unchanged when a rerun fails', async () => {
+    const id = makeProject();
+    insertStep(id, { text: 'My own prep step', done: false, source: 'manual', position: 0 });
+    insertStep(id, { text: 'Mark out the frame', done: true, source: 'research', position: 1 });
+    insertStep(id, { text: 'Cut the lumber', done: false, source: 'research', position: 2 });
+    const before = getSteps(id);
+
+    const p = provider('claude', async () => ({ ok: false, error: 'timeout' }));
+    const status = await researchProject(id, { db, provider: p });
+    expect(status).toBe('research_failed');
+
+    expect(getSteps(id)).toEqual(before);
+  });
+
+  it('replaces every step when none were manual or completed', async () => {
+    const id = makeProject();
+    insertStep(id, { text: 'Old step one', done: false, source: 'research', position: 0 });
+    insertStep(id, { text: 'Old step two', done: false, source: 'research', position: 1 });
+
+    const p = provider('claude', async () => validResult());
+    await researchProject(id, { db, provider: p });
+
+    const steps = getSteps(id);
+    expect(steps.map((s) => s.text)).toEqual(['Mark out the frame', 'Cut the lumber', 'Assemble the walls']);
+    expect(steps.every((s) => s.source === 'research' && !s.done)).toBe(true);
   });
 });

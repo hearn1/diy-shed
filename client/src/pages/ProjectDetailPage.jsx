@@ -9,13 +9,23 @@ import {
   markItemOwned,
   unlinkItem,
   getCompletionReview,
-  completeProject
+  completeProject,
+  getSteps,
+  addStep,
+  updateStep,
+  deleteStep,
+  moveStep,
+  startProject
 } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 import { looksLikeProviderError } from '../providerMeta.js';
 
 const EMPTY_ITEM = { name: '', type: 'tool', est_cost: '' };
 const POLL_MS = 4000;
+const RERUN_CONFIRM =
+  'Re-run research? This replaces the current research results. ' +
+  "Steps you've added or edited, and any step you've already checked off, will be kept. " +
+  'Any remaining AI-suggested steps you have not started will be replaced with newly researched ones.';
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -30,10 +40,19 @@ export default function ProjectDetailPage() {
   const [effort, setEffort] = useState({ effort_level: '', effort_hours: '', skill_level: '' });
   const [completionTools, setCompletionTools] = useState(null);
   const [checkedTools, setCheckedTools] = useState({});
+  const [steps, setSteps] = useState([]);
+  const [stepText, setStepText] = useState('');
+  const [editingStepId, setEditingStepId] = useState(null);
 
   function loadItems() {
     get(`/api/projects/${id}/items`)
       .then(setItems)
+      .catch((err) => setError(err.message));
+  }
+
+  function loadSteps() {
+    getSteps(id)
+      .then(setSteps)
       .catch((err) => setError(err.message));
   }
 
@@ -47,6 +66,7 @@ export default function ProjectDetailPage() {
           skill_level: p.skill_level ?? ''
         });
         loadItems();
+        loadSteps();
       })
       .catch((err) => {
         if (err.message.toLowerCase().includes('not found')) setNotFound(true);
@@ -188,11 +208,79 @@ export default function ProjectDetailPage() {
   }
 
   async function handleRerun() {
-    if (!window.confirm('Re-run research? This replaces the current research results.')) return;
+    if (!window.confirm(RERUN_CONFIRM)) return;
     setError('');
     try {
       await rerunResearch(id);
       loadProject();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleStartProject() {
+    setError('');
+    try {
+      const updated = await startProject(id);
+      setProject((prev) => ({ ...prev, status: updated.status }));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function resetStepForm() {
+    setStepText('');
+    setEditingStepId(null);
+  }
+
+  function startEditStep(step) {
+    setEditingStepId(step.id);
+    setStepText(step.text);
+  }
+
+  async function submitStep(e) {
+    e.preventDefault();
+    setError('');
+    try {
+      if (editingStepId) {
+        await updateStep(id, editingStepId, { text: stepText });
+      } else {
+        await addStep(id, stepText);
+      }
+      resetStepForm();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function toggleStepDone(step) {
+    setError('');
+    try {
+      await updateStep(id, step.id, { done: !step.done });
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleDeleteStep(step) {
+    if (!window.confirm(`Remove step "${step.text}"?`)) return;
+    setError('');
+    try {
+      await deleteStep(id, step.id);
+      if (editingStepId === step.id) resetStepForm();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleMoveStep(step, direction) {
+    setError('');
+    try {
+      const updated = await moveStep(id, step.id, direction);
+      setSteps(updated);
     } catch (err) {
       setError(err.message);
     }
@@ -217,11 +305,14 @@ export default function ProjectDetailPage() {
   const enriched = items.map((i) => ({ ...i, owned: gapById.get(i.id)?.owned ?? false }));
   const tools = enriched.filter((i) => i.type === 'tool');
   const materials = enriched.filter((i) => i.type === 'material');
+  const doneStepCount = steps.filter((s) => s.done).length;
+  const stepsLocked = project.status === 'done';
 
   return (
     <section>
       <div className="actions">
         <h2>{project.name}</h2>
+        {project.status === 'ready' && <button onClick={handleStartProject}>Start project</button>}
         {project.status !== 'done' && <button onClick={startCompletion}>Mark as done</button>}
         <Link to={`/projects/${id}/edit`}>Edit</Link>
       </div>
@@ -304,6 +395,72 @@ export default function ProjectDetailPage() {
           )}
         </>
       )}
+
+      <h3>Execution Steps</h3>
+      <p className="step-progress">
+        {doneStepCount} of {steps.length} step{steps.length === 1 ? '' : 's'} done
+      </p>
+      {steps.length === 0 ? (
+        <p className="empty">No steps yet.</p>
+      ) : (
+        <ul className="step-list">
+          {steps.map((step, index) => (
+            <li key={step.id} className={step.done ? 'step-done' : ''}>
+              <input
+                type="checkbox"
+                checked={!!step.done}
+                disabled={stepsLocked}
+                onChange={() => toggleStepDone(step)}
+                aria-label={`Mark step "${step.text}" done`}
+              />
+              <span className={`step-badge ${step.source === 'research' ? 'ai' : 'you'}`}>
+                {step.source === 'research' ? 'AI' : 'You'}
+              </span>
+              <span className="step-text">{step.text}</span>
+              <span className="actions">
+                <button
+                  type="button"
+                  onClick={() => handleMoveStep(step, 'up')}
+                  disabled={index === 0}
+                  aria-label="Move step up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMoveStep(step, 'down')}
+                  disabled={index === steps.length - 1}
+                  aria-label="Move step down"
+                >
+                  ↓
+                </button>
+                <button type="button" onClick={() => startEditStep(step)}>
+                  Edit
+                </button>
+                <button type="button" className="danger" onClick={() => handleDeleteStep(step)}>
+                  Delete
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={submitStep}>
+        <label>
+          Step text
+          <input value={stepText} onChange={(e) => setStepText(e.target.value)} required />
+        </label>
+        <div className="actions">
+          <button type="submit" className="primary">
+            {editingStepId ? 'Save step' : 'Add step'}
+          </button>
+          {editingStepId && (
+            <button type="button" onClick={resetStepForm}>
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
 
       <h3>Tools &amp; Materials</h3>
       {project.gap && (

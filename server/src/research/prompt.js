@@ -19,6 +19,7 @@ Respond with a SINGLE JSON object and NOTHING else — no prose, no explanation,
 - "guides": array of 3 to 5 objects, each with "title" (string), "url" (a valid http or https link to a guide), and "summary" (string).
 - "tools": array of objects, each with "name" (string) and "est_cost" (approximate cost in US dollars as a number, or null if unknown). Tools are reusable.
 - "materials": array of objects, each with "name" (string) and "est_cost" (US dollars as a number, or null). Materials are consumed by the project.
+- "steps": array of strings — the concrete, ordered steps to actually carry out the project from start to finish, in the order they should be done. Typically 5 to 15 steps, each a short actionable instruction.
 
 Return only the JSON object.`;
 }
