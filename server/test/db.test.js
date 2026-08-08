@@ -24,12 +24,12 @@ afterEach(() => {
 });
 
 describe('schema', () => {
-  it('creates all 5 tables', () => {
+  it('creates all 6 tables', () => {
     const rows = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all()
       .map((r) => r.name);
-    for (const t of ['projects', 'inventory', 'project_items', 'guides', 'settings']) {
+    for (const t of ['projects', 'inventory', 'project_items', 'guides', 'settings', 'execution_steps']) {
       expect(rows).toContain(t);
     }
   });
@@ -42,7 +42,7 @@ describe('schema', () => {
     expect(row.created_at).toBeTruthy();
   });
 
-  it('cascades project delete to guides and project_items', () => {
+  it('cascades project delete to guides, project_items and execution_steps', () => {
     const p = db.prepare('INSERT INTO projects (name) VALUES (?)').run('P').lastInsertRowid;
     db.prepare('INSERT INTO guides (project_id, title, url) VALUES (?,?,?)').run(p, 'G', 'http://x');
     db.prepare('INSERT INTO project_items (project_id, name, normalized_name, type) VALUES (?,?,?,?)').run(
@@ -51,9 +51,31 @@ describe('schema', () => {
       'drill',
       'tool'
     );
+    db.prepare('INSERT INTO execution_steps (project_id, text, position) VALUES (?,?,?)').run(p, 'Do the thing', 0);
     db.prepare('DELETE FROM projects WHERE id = ?').run(p);
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(p).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(p).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM execution_steps WHERE project_id = ?').get(p).c).toBe(0);
+  });
+
+  it('applies defaults on a minimal execution_steps insert', () => {
+    const p = db.prepare('INSERT INTO projects (name) VALUES (?)').run('P').lastInsertRowid;
+    const info = db
+      .prepare('INSERT INTO execution_steps (project_id, text, position) VALUES (?,?,?)')
+      .run(p, 'Measure twice', 0);
+    const row = db.prepare('SELECT * FROM execution_steps WHERE id = ?').get(info.lastInsertRowid);
+    expect(row.done).toBe(0);
+    expect(row.source).toBe('manual');
+    expect(row.created_at).toBeTruthy();
+  });
+
+  it('rejects an invalid execution_steps source', () => {
+    const p = db.prepare('INSERT INTO projects (name) VALUES (?)').run('P').lastInsertRowid;
+    expect(() =>
+      db
+        .prepare("INSERT INTO execution_steps (project_id, text, position, source) VALUES (?,?,?,'bogus')")
+        .run(p, 'x', 0)
+    ).toThrow();
   });
 
   it('nulls project_items.inventory_id when inventory is deleted', () => {

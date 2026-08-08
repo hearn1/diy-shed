@@ -39,6 +39,27 @@ function parseItems(arr, label, errors) {
   return out;
 }
 
+function parseSteps(arr, errors) {
+  const out = [];
+  if (!Array.isArray(arr)) {
+    errors.push('steps must be an array');
+    return out;
+  }
+  if (arr.length < 1) {
+    errors.push('steps must have at least 1 entry');
+    return out;
+  }
+  arr.forEach((item, i) => {
+    const text = typeof item === 'string' ? item.trim() : '';
+    if (!text) {
+      errors.push(`steps[${i}] must be a non-empty string`);
+      return;
+    }
+    out.push(text);
+  });
+  return out;
+}
+
 export function validateResearchResult(obj) {
   const errors = [];
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
@@ -81,7 +102,8 @@ export function validateResearchResult(obj) {
 
   const tools = parseItems(obj.tools, 'tools', errors);
   const materials = parseItems(obj.materials, 'materials', errors);
+  const steps = parseSteps(obj.steps, errors);
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, value: { summary, effort, guides, tools, materials } };
+  return { ok: true, value: { summary, effort, guides, tools, materials, steps } };
 }

@@ -48,6 +48,7 @@ beforeEach(() => {
       ]);
     return Promise.resolve([]);
   });
+  api.getSteps.mockResolvedValue([]);
 });
 
 describe('ProjectDetailPage', () => {
@@ -265,5 +266,124 @@ describe('ProjectDetailPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Build a shed' });
     expect(screen.getByText(/Research failed: timeout/i)).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetailPage execution steps checklist', () => {
+  it('renders steps with progress, AI/You badges and an empty state when there are none', async () => {
+    api.getSteps.mockResolvedValue([]);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.getByRole('heading', { name: 'Checklist' })).toBeInTheDocument();
+    expect(screen.getByText(/No steps yet/)).toBeInTheDocument();
+  });
+
+  it('shows progress across done and not-done steps and labels their source', async () => {
+    api.getSteps.mockResolvedValue([
+      { id: 1, text: 'Measure twice', done: 1, source: 'research', position: 0 },
+      { id: 2, text: 'Cut once', done: 0, source: 'research', position: 1 },
+      { id: 3, text: 'My own step', done: 0, source: 'manual', position: 2 }
+    ]);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.getByText('1 of 3 done')).toBeInTheDocument();
+    const aiStep = screen.getByText('Measure twice').closest('li');
+    expect(within(aiStep).getByText('AI')).toBeInTheDocument();
+    const userStep = screen.getByText('My own step').closest('li');
+    expect(within(userStep).getByText('You')).toBeInTheDocument();
+  });
+
+  it('adds a manual step via the checklist form', async () => {
+    api.getSteps.mockResolvedValue([]);
+    api.addStep.mockResolvedValue({ id: 1, text: 'Buy screws', done: 0, source: 'manual', position: 0 });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.change(screen.getByLabelText('Step'), { target: { value: 'Buy screws' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
+
+    await waitFor(() => expect(api.addStep).toHaveBeenCalledWith('1', 'Buy screws'));
+  });
+
+  it('checks a step done and persists the toggle', async () => {
+    let done = false;
+    api.getSteps.mockImplementation(() =>
+      Promise.resolve([{ id: 1, text: 'Sand the edges', done, source: 'manual', position: 0 }])
+    );
+    api.updateStep.mockImplementation((projectId, stepId, payload) => {
+      done = payload.done;
+      return Promise.resolve({});
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Sand the edges/ }));
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 1, { done: true }));
+    await waitFor(() => expect(screen.getByText('1 of 1 done')).toBeInTheDocument());
+  });
+
+  it('edits a step through the shared form', async () => {
+    api.getSteps.mockResolvedValue([{ id: 1, text: 'Old text', done: 0, source: 'research', position: 0 }]);
+    api.updateStep.mockResolvedValue({});
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const step = screen.getByText('Old text').closest('li');
+    fireEvent.click(within(step).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Step'), { target: { value: 'New text' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save step' }));
+
+    await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 1, { text: 'New text' }));
+  });
+
+  it('deletes a step after confirming', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    api.getSteps.mockResolvedValue([{ id: 1, text: 'Unwanted step', done: 0, source: 'manual', position: 0 }]);
+    api.deleteStep.mockResolvedValue(null);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const step = screen.getByText('Unwanted step').closest('li');
+    fireEvent.click(within(step).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(api.deleteStep).toHaveBeenCalledWith('1', 1));
+  });
+
+  it('moves a step up via the reorder controls', async () => {
+    api.getSteps.mockResolvedValue([
+      { id: 1, text: 'First', done: 0, source: 'manual', position: 0 },
+      { id: 2, text: 'Second', done: 0, source: 'manual', position: 1 }
+    ]);
+    api.moveStep.mockResolvedValue([
+      { id: 2, text: 'Second', done: 0, source: 'manual', position: 0 },
+      { id: 1, text: 'First', done: 0, source: 'manual', position: 1 }
+    ]);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    const second = screen.getByText('Second').closest('li');
+    fireEvent.click(within(second).getByRole('button', { name: 'Move step up' }));
+
+    await waitFor(() => expect(api.moveStep).toHaveBeenCalledWith('1', 2, 'up'));
+  });
+
+  it('shows a Start project button for a ready project and moves it to in_progress', async () => {
+    api.startProject.mockResolvedValue({ ...project, status: 'in_progress' });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start project' }));
+    await waitFor(() => expect(api.startProject).toHaveBeenCalledWith('1'));
+    await waitFor(() => expect(screen.getByText(/Status: In Progress/)).toBeInTheDocument());
+  });
+
+  it('hides the Start project button once the project is no longer ready', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'in_progress' });
+      return Promise.resolve([]);
+    });
+    renderPage();
+    await screen.findByRole('heading', { name: 'Build a shed' });
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
   });
 });
