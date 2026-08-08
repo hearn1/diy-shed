@@ -9,7 +9,13 @@ import {
   markItemOwned,
   unlinkItem,
   getCompletionReview,
-  completeProject
+  completeProject,
+  startProject,
+  getSteps,
+  addStep,
+  updateStep,
+  deleteStep,
+  moveStep
 } from '../api/client.js';
 import { PRIORITIES, STATUSES, ITEM_TYPES, EFFORT_LEVELS, SKILL_LEVELS, labelFor } from '../constants.js';
 import { looksLikeProviderError } from '../providerMeta.js';
@@ -21,12 +27,15 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [items, setItems] = useState([]);
+  const [steps, setSteps] = useState([]);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
   const pollRef = useRef(null);
 
   const [itemForm, setItemForm] = useState(EMPTY_ITEM);
   const [editingItemId, setEditingItemId] = useState(null);
+  const [stepText, setStepText] = useState('');
+  const [editingStepId, setEditingStepId] = useState(null);
   const [effort, setEffort] = useState({ effort_level: '', effort_hours: '', skill_level: '' });
   const [completionTools, setCompletionTools] = useState(null);
   const [checkedTools, setCheckedTools] = useState({});
@@ -34,6 +43,12 @@ export default function ProjectDetailPage() {
   function loadItems() {
     get(`/api/projects/${id}/items`)
       .then(setItems)
+      .catch((err) => setError(err.message));
+  }
+
+  function loadSteps() {
+    getSteps(id)
+      .then(setSteps)
       .catch((err) => setError(err.message));
   }
 
@@ -47,6 +62,7 @@ export default function ProjectDetailPage() {
           skill_level: p.skill_level ?? ''
         });
         loadItems();
+        loadSteps();
       })
       .catch((err) => {
         if (err.message.toLowerCase().includes('not found')) setNotFound(true);
@@ -108,6 +124,76 @@ export default function ProjectDetailPage() {
       await del(`/api/projects/${id}/items/${item.id}`);
       if (editingItemId === item.id) resetItemForm();
       loadItems();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function resetStepForm() {
+    setStepText('');
+    setEditingStepId(null);
+  }
+
+  function startEditStep(step) {
+    setEditingStepId(step.id);
+    setStepText(step.text);
+  }
+
+  async function submitStep(e) {
+    e.preventDefault();
+    setError('');
+    const text = stepText.trim();
+    if (!text) return;
+    try {
+      if (editingStepId) {
+        await updateStep(id, editingStepId, { text });
+      } else {
+        await addStep(id, text);
+      }
+      resetStepForm();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function toggleStep(step) {
+    setError('');
+    try {
+      await updateStep(id, step.id, { done: !step.done });
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function deleteStepHandler(step) {
+    if (!window.confirm(`Remove step "${step.text}"?`)) return;
+    setError('');
+    try {
+      await deleteStep(id, step.id);
+      if (editingStepId === step.id) resetStepForm();
+      loadSteps();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function moveStepHandler(step, direction) {
+    setError('');
+    try {
+      const updated = await moveStep(id, step.id, direction);
+      setSteps(updated);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleStart() {
+    setError('');
+    try {
+      const updated = await startProject(id);
+      setProject((prev) => ({ ...updated, guides: prev?.guides ?? [], gap: prev?.gap }));
     } catch (err) {
       setError(err.message);
     }
@@ -188,7 +274,11 @@ export default function ProjectDetailPage() {
   }
 
   async function handleRerun() {
-    if (!window.confirm('Re-run research? This replaces the current research results.')) return;
+    const message =
+      'Re-run research? This replaces guides, tools and materials. ' +
+      'For the checklist: steps you added or edited, and completed AI steps, are kept as-is; ' +
+      'incomplete AI-generated steps are replaced by the new research.';
+    if (!window.confirm(message)) return;
     setError('');
     try {
       await rerunResearch(id);
@@ -222,6 +312,7 @@ export default function ProjectDetailPage() {
     <section>
       <div className="actions">
         <h2>{project.name}</h2>
+        {project.status === 'ready' && <button onClick={handleStart}>Start project</button>}
         {project.status !== 'done' && <button onClick={startCompletion}>Mark as done</button>}
         <Link to={`/projects/${id}/edit`}>Edit</Link>
       </div>
@@ -304,6 +395,35 @@ export default function ProjectDetailPage() {
           )}
         </>
       )}
+
+      <h3>Execution Checklist</h3>
+      <p className="cost-summary">
+        {steps.filter((s) => s.done).length} of {steps.length} step{steps.length === 1 ? '' : 's'} done
+      </p>
+      <StepList
+        steps={steps}
+        projectDone={project.status === 'done'}
+        onToggle={toggleStep}
+        onMove={moveStepHandler}
+        onEdit={startEditStep}
+        onDelete={deleteStepHandler}
+      />
+      <form onSubmit={submitStep}>
+        <label>
+          {editingStepId ? 'Edit step' : 'New step'}
+          <input value={stepText} onChange={(e) => setStepText(e.target.value)} required />
+        </label>
+        <div className="actions">
+          <button type="submit" className="primary">
+            {editingStepId ? 'Save step' : 'Add step'}
+          </button>
+          {editingStepId && (
+            <button type="button" onClick={resetStepForm}>
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
 
       <h3>Tools &amp; Materials</h3>
       {project.gap && (
@@ -442,5 +562,44 @@ function ItemGroup({ title, items, onEdit, onDelete, onOwn, onUnlink }) {
         </ul>
       )}
     </div>
+  );
+}
+
+function StepList({ steps, projectDone, onToggle, onMove, onEdit, onDelete }) {
+  if (steps.length === 0) return <p className="empty">No steps yet.</p>;
+  return (
+    <ul className="item-list">
+      {steps.map((step, idx) => (
+        <li key={step.id} className={step.done ? 'item-owned' : ''}>
+          <input
+            type="checkbox"
+            aria-label={`Mark "${step.text}" done`}
+            checked={!!step.done}
+            disabled={projectDone}
+            onChange={() => onToggle(step)}
+          />
+          <span className={`item-badge ${step.source === 'research' ? 'source-ai' : 'source-manual'}`}>
+            {step.source === 'research' ? 'AI' : 'You'}
+          </span>
+          {step.text}
+          <span className="actions">
+            <button onClick={() => onMove(step, 'up')} disabled={idx === 0} aria-label={`Move "${step.text}" up`}>
+              ↑
+            </button>
+            <button
+              onClick={() => onMove(step, 'down')}
+              disabled={idx === steps.length - 1}
+              aria-label={`Move "${step.text}" down`}
+            >
+              ↓
+            </button>
+            <button onClick={() => onEdit(step)}>Edit</button>
+            <button className="danger" onClick={() => onDelete(step)}>
+              Delete
+            </button>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

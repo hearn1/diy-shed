@@ -48,6 +48,7 @@ beforeEach(() => {
       ]);
     return Promise.resolve([]);
   });
+  api.getSteps.mockResolvedValue([]);
 });
 
 describe('ProjectDetailPage', () => {
@@ -265,5 +266,115 @@ describe('ProjectDetailPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Build a shed' });
     expect(screen.getByText(/Research failed: timeout/i)).toBeInTheDocument();
+  });
+
+  describe('execution checklist', () => {
+    const steps = [
+      { id: 1, text: 'Shut off water', done: 1, source: 'research', position: 0 },
+      { id: 2, text: 'Remove old faucet', done: 0, source: 'research', position: 1 },
+      { id: 3, text: 'Buy new washers', done: 0, source: 'manual', position: 2 }
+    ];
+
+    it('shows progress and an AI/You badge per step', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      expect(screen.getByText('1 of 3 steps done')).toBeInTheDocument();
+      const first = screen.getByText('Shut off water').closest('li');
+      expect(within(first).getByText('AI')).toBeInTheDocument();
+      const third = screen.getByText('Buy new washers').closest('li');
+      expect(within(third).getByText('You')).toBeInTheDocument();
+    });
+
+    it('adds a manual step at the end', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.addStep.mockResolvedValue({ id: 4, text: 'Caulk the base', done: 0, source: 'manual', position: 3 });
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      fireEvent.change(screen.getByLabelText('New step'), { target: { value: 'Caulk the base' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Add step' }));
+
+      await waitFor(() => expect(api.addStep).toHaveBeenCalledWith('1', 'Caulk the base'));
+    });
+
+    it('edits a step and persists the new text', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.updateStep.mockResolvedValue({ ...steps[1], text: 'Remove and discard old faucet' });
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      const li = screen.getByText('Remove old faucet').closest('li');
+      fireEvent.click(within(li).getByRole('button', { name: 'Edit' }));
+      fireEvent.change(screen.getByLabelText('Edit step'), { target: { value: 'Remove and discard old faucet' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save step' }));
+
+      await waitFor(() =>
+        expect(api.updateStep).toHaveBeenCalledWith('1', 2, { text: 'Remove and discard old faucet' })
+      );
+    });
+
+    it('checks and unchecks a step', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.updateStep.mockResolvedValue({ ...steps[1], done: true });
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      const li = screen.getByText('Remove old faucet').closest('li');
+      fireEvent.click(within(li).getByRole('checkbox'));
+
+      await waitFor(() => expect(api.updateStep).toHaveBeenCalledWith('1', 2, { done: true }));
+    });
+
+    it('deletes a step', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.deleteStep.mockResolvedValue(null);
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      const li = screen.getByText('Buy new washers').closest('li');
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      fireEvent.click(within(li).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(api.deleteStep).toHaveBeenCalledWith('1', 3));
+    });
+
+    it('moves a step up and down', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.moveStep.mockResolvedValue(steps);
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      const li = screen.getByText('Remove old faucet').closest('li');
+      fireEvent.click(within(li).getByRole('button', { name: /up/i }));
+      await waitFor(() => expect(api.moveStep).toHaveBeenCalledWith('1', 2, 'up'));
+
+      fireEvent.click(within(li).getByRole('button', { name: /down/i }));
+      await waitFor(() => expect(api.moveStep).toHaveBeenCalledWith('1', 2, 'down'));
+    });
+
+    it('shows a Start project button on a ready project and starts it', async () => {
+      api.getSteps.mockResolvedValue(steps);
+      api.startProject.mockResolvedValue({ ...project, status: 'in_progress' });
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start project' }));
+      await waitFor(() => expect(api.startProject).toHaveBeenCalledWith('1'));
+      await waitFor(() => expect(screen.getByText(/Status: In Progress/)).toBeInTheDocument());
+    });
+
+    it('hides the Start project button once a project is in progress', async () => {
+      api.get.mockImplementation((path) => {
+        if (path === '/api/projects/1') return Promise.resolve({ ...project, status: 'in_progress' });
+        return Promise.resolve([]);
+      });
+      api.getSteps.mockResolvedValue(steps);
+      renderPage();
+      await screen.findByRole('heading', { name: 'Build a shed' });
+
+      expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+    });
   });
 });

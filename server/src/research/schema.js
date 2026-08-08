@@ -81,7 +81,29 @@ export function validateResearchResult(obj) {
 
   const tools = parseItems(obj.tools, 'tools', errors);
   const materials = parseItems(obj.materials, 'materials', errors);
+  const steps = parseSteps(obj.steps, errors);
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, value: { summary, effort, guides, tools, materials } };
+  return { ok: true, value: { summary, effort, guides, tools, materials, steps } };
+}
+
+// Steps are optional so a provider that omits them still produces a valid
+// (checklist-less) result rather than failing research outright — the same
+// degrade-gracefully posture as the rest of this schema.
+function parseSteps(arr, errors) {
+  if (arr === undefined) return [];
+  const out = [];
+  if (!Array.isArray(arr)) {
+    errors.push('steps must be an array');
+    return out;
+  }
+  arr.forEach((step, i) => {
+    const text = typeof step === 'string' ? step.trim() : '';
+    if (!text) {
+      errors.push(`steps[${i}] must be a non-empty string`);
+      return;
+    }
+    out.push(text);
+  });
+  return out;
 }
