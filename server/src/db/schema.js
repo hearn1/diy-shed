@@ -46,6 +46,14 @@ export function initSchema(db) {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+    CREATE TABLE IF NOT EXISTS project_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0,1)),
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','research')),
+      position INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   ensureColumn(db, 'projects', 'research_error', 'TEXT');

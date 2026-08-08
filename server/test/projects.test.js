@@ -111,6 +111,31 @@ describe('projects API', () => {
   });
 });
 
+describe('projects start', () => {
+  it('moves a ready project to in_progress', async () => {
+    const created = await request(app).post('/api/projects?research=false').send({ name: 'Start me' });
+    expect(created.body.status).toBe('ready');
+
+    const started = await request(app).post(`/api/projects/${created.body.id}/start`);
+    expect(started.status).toBe(200);
+    expect(started.body.status).toBe('in_progress');
+
+    const reloaded = await request(app).get(`/api/projects/${created.body.id}`);
+    expect(reloaded.body.status).toBe('in_progress');
+  });
+
+  it('rejects starting a project that is not ready', async () => {
+    const created = await request(app).post('/api/projects?research=false').send({ name: 'Not ready', status: 'done' });
+    const res = await request(app).post(`/api/projects/${created.body.id}/start`);
+    expect(res.status).toBe(400);
+  });
+
+  it('404s starting an unknown project', async () => {
+    const res = await request(app).post('/api/projects/999999/start');
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('projects research triggering', () => {
   it('returns 201 immediately and enqueues research when the selected provider is available', async () => {
     isSelectedProviderAvailable.mockResolvedValue(true);

@@ -52,6 +52,30 @@ export function completeProject(projectId, addItemIds) {
   return post(`/api/projects/${projectId}/complete`, { add_item_ids: addItemIds });
 }
 
+export function startProject(projectId) {
+  return post(`/api/projects/${projectId}/start`);
+}
+
+export function getSteps(projectId) {
+  return get(`/api/projects/${projectId}/steps`);
+}
+
+export function addStep(projectId, text) {
+  return post(`/api/projects/${projectId}/steps`, { text });
+}
+
+export function updateStep(projectId, stepId, payload) {
+  return put(`/api/projects/${projectId}/steps/${stepId}`, payload);
+}
+
+export function deleteStep(projectId, stepId) {
+  return del(`/api/projects/${projectId}/steps/${stepId}`);
+}
+
+export function moveStep(projectId, stepId, direction) {
+  return post(`/api/projects/${projectId}/steps/${stepId}/move`, { direction });
+}
+
 export function getHealth() {
   return get('/api/health');
 }

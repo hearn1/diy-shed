@@ -83,6 +83,16 @@ router.get('/:id/completion-review', (req, res) => {
   res.json({ tools });
 });
 
+router.post('/:id/start', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  if (project.status !== 'ready') {
+    return res.status(400).json({ error: 'Only a ready project can be started' });
+  }
+  db.prepare("UPDATE projects SET status = 'in_progress' WHERE id = ?").run(project.id);
+  res.json(buildProjectResponse(getProject(project.id)));
+});
+
 router.post('/:id/complete', (req, res) => {
   const project = getProject(req.params.id);
   if (!project) return res.status(404).json({ error: 'Project not found' });
