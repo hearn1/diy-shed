@@ -406,6 +406,57 @@ tr.researching {
   color: oklch(48% 0.12 40);
 }
 
+/* --- M3 execution mode checklist --- */
+.progress-summary {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.step-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.step-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.step-list li.step-done {
+  color: var(--muted);
+}
+
+.step-list li.step-done .step-text {
+  text-decoration: line-through;
+}
+
+.step-text {
+  flex: 1;
+}
+
+.step-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 100px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.step-badge.ai {
+  background: oklch(90% 0.05 260);
+  color: oklch(42% 0.1 260);
+}
+
+.step-badge.user {
+  background: oklch(90% 0.02 90);
+  color: oklch(42% 0.02 90);
+}
+
 /* AI provider setup / settings */
 .setup {
   max-width: 640px;

@@ -72,3 +72,27 @@ export function getRankedProjects(wEffort) {
   const query = wEffort === undefined ? '' : `?w_effort=${wEffort}`;
   return get(`/api/projects/ranked${query}`);
 }
+
+export function startProject(projectId) {
+  return post(`/api/projects/${projectId}/start`);
+}
+
+export function getSteps(projectId) {
+  return get(`/api/projects/${projectId}/steps`);
+}
+
+export function addStep(projectId, text) {
+  return post(`/api/projects/${projectId}/steps`, { text });
+}
+
+export function updateStep(projectId, stepId, payload) {
+  return put(`/api/projects/${projectId}/steps/${stepId}`, payload);
+}
+
+export function deleteStep(projectId, stepId) {
+  return del(`/api/projects/${projectId}/steps/${stepId}`);
+}
+
+export function moveStep(projectId, stepId, direction) {
+  return post(`/api/projects/${projectId}/steps/${stepId}/move`, { direction });
+}

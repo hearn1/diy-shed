@@ -22,7 +22,8 @@ function validResult() {
       effort: { level: 'Medium', hours: 12, skill: 'Intermediate' },
       guides: [{ title: 'Shed 101', url: 'https://example.com/shed', summary: 'overview' }],
       tools: [{ name: 'Circular Saw', est_cost: 120 }],
-      materials: [{ name: 'Plywood', est_cost: 40 }]
+      materials: [{ name: 'Plywood', est_cost: 40 }],
+      steps: ['Lay the foundation', 'Frame the walls']
     }
   };
 }
@@ -72,6 +73,12 @@ describe('researchProject', () => {
       ['Plywood', 'material', 'research']
     ]);
     expect(items[0].normalized_name).toBe('circular saw');
+
+    const steps = db.prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY position').all(id);
+    expect(steps.map((s) => [s.text, s.source, s.done])).toEqual([
+      ['Lay the foundation', 'research', 0],
+      ['Frame the walls', 'research', 0]
+    ]);
   });
 
   it('records research_provider from the stored selection when no provider is injected', async () => {
@@ -170,6 +177,7 @@ describe('researchProject', () => {
     expect(status).toBe('research_failed');
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM execution_steps WHERE project_id = ?').get(id).c).toBe(0);
   });
 
   it('rolls back the whole transaction on a mid-write error', async () => {
@@ -196,5 +204,65 @@ describe('researchProject', () => {
     expect(project.research_summary).toBeNull();
     expect(db.prepare('SELECT COUNT(*) c FROM guides WHERE project_id = ?').get(id).c).toBe(0);
     expect(db.prepare('SELECT COUNT(*) c FROM project_items WHERE project_id = ?').get(id).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM execution_steps WHERE project_id = ?').get(id).c).toBe(0);
+  });
+});
+
+describe('researchProject execution step preservation on re-run', () => {
+  function insertStep(id, { text, done = 0, source = 'manual', position }) {
+    db.prepare(
+      'INSERT INTO execution_steps (project_id, text, done, source, position) VALUES (?,?,?,?,?)'
+    ).run(id, text, done, source, position);
+  }
+
+  it('persists the researched steps in order on first success', async () => {
+    const id = makeProject();
+    await researchProject(id, { db, provider: provider('claude', async () => validResult()) });
+    const steps = db.prepare('SELECT text, source, done FROM execution_steps WHERE project_id = ? ORDER BY position').all(id);
+    expect(steps).toEqual([
+      { text: 'Lay the foundation', source: 'research', done: 0 },
+      { text: 'Frame the walls', source: 'research', done: 0 }
+    ]);
+  });
+
+  it('keeps a manual step, a completed AI step and an edited (now-manual) AI step, replacing only the incomplete untouched AI step', async () => {
+    const id = makeProject();
+    insertStep(id, { text: 'My own step', source: 'manual', position: 0 });
+    insertStep(id, { text: 'Old completed AI step', source: 'research', done: 1, position: 1 });
+    insertStep(id, { text: 'Old untouched AI step', source: 'research', done: 0, position: 2 });
+    insertStep(id, { text: 'Old AI step, edited by user', source: 'manual', position: 3 });
+
+    const status = await researchProject(id, {
+      db,
+      provider: provider('claude', async () => validResult())
+    });
+    expect(status).toBe('ready');
+
+    const steps = db
+      .prepare('SELECT text, source, done FROM execution_steps WHERE project_id = ? ORDER BY position, id')
+      .all(id);
+    expect(steps).toEqual([
+      { text: 'My own step', source: 'manual', done: 0 },
+      { text: 'Old completed AI step', source: 'research', done: 1 },
+      { text: 'Old AI step, edited by user', source: 'manual', done: 0 },
+      { text: 'Lay the foundation', source: 'research', done: 0 },
+      { text: 'Frame the walls', source: 'research', done: 0 }
+    ]);
+  });
+
+  it('leaves the checklist byte-for-byte unchanged when a re-run fails', async () => {
+    const id = makeProject();
+    insertStep(id, { text: 'Keep me', source: 'manual', position: 0 });
+    insertStep(id, { text: 'Untouched AI step', source: 'research', done: 0, position: 1 });
+    const before = db.prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY id').all(id);
+
+    const status = await researchProject(id, {
+      db,
+      provider: provider('claude', async () => ({ ok: false, error: 'timeout' }))
+    });
+    expect(status).toBe('research_failed');
+
+    const after = db.prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY id').all(id);
+    expect(after).toEqual(before);
   });
 });

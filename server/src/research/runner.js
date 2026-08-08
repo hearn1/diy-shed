@@ -4,6 +4,7 @@ import { getSelectedProviderId } from './selection.js';
 import { buildResearchPrompt } from './prompt.js';
 import { validateResearchResult } from './schema.js';
 import { normalizeName } from '../util/normalize.js';
+import { planStepMerge } from '../util/executionSteps.js';
 
 async function attempt(project, provider) {
   const prompt = buildResearchPrompt({ name: project.name, description: project.description });
@@ -62,7 +63,7 @@ export async function researchProject(projectId, deps = {}) {
 
   if (!result.ok) return fail(db, projectId, result.error);
 
-  const { summary, effort, guides, tools, materials } = result.value;
+  const { summary, effort, guides, tools, materials, steps } = result.value;
   const persist = db.transaction(() => {
     db.prepare(
       `UPDATE projects
@@ -87,6 +88,19 @@ export async function researchProject(projectId, deps = {}) {
     );
     for (const t of tools) insertItem.run(projectId, t.name, normalizeName(t.name), 'tool', t.est_cost);
     for (const m of materials) insertItem.run(projectId, m.name, normalizeName(m.name), 'material', m.est_cost);
+
+    const existingSteps = db
+      .prepare('SELECT * FROM execution_steps WHERE project_id = ? ORDER BY position, id')
+      .all(projectId);
+    const { removeIds, toInsert } = planStepMerge(existingSteps, steps);
+    if (removeIds.length) {
+      const placeholders = removeIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM execution_steps WHERE id IN (${placeholders})`).run(...removeIds);
+    }
+    const insertStep = db.prepare(
+      "INSERT INTO execution_steps (project_id, text, done, source, position) VALUES (?,?,0,'research',?)"
+    );
+    for (const s of toInsert) insertStep.run(projectId, s.text, s.position);
   });
 
   try {

@@ -158,6 +158,18 @@ router.post('/:id/research', (req, res) => {
   res.status(202).json(getProject(project.id));
 });
 
+// Starting is an explicit user action, not an automatic side effect of
+// checking off steps (checklist progress never drives project status).
+router.post('/:id/start', (req, res) => {
+  const project = getProject(req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  if (project.status !== 'ready') {
+    return res.status(400).json({ error: 'Only a ready project can be started' });
+  }
+  db.prepare("UPDATE projects SET status = 'in_progress' WHERE id = ?").run(project.id);
+  res.json(buildProjectResponse(getProject(project.id)));
+});
+
 const UPDATABLE = {
   name: null,
   description: null,
